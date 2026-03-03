@@ -1,0 +1,314 @@
+---
+title: 'IconFollower'
+description: 'Individual icon component that follows and tracks a specific player'
+icon: 'user-tag'
+---
+
+## Overview
+
+The `IconFollower` component is responsible for managing individual role icons that appear above players' heads. It handles positioning, rotation, distance-based visibility, and performance optimization through interval-based updates.
+
+**Namespace:** Global  
+**Inherits:** `UdonSharpBehaviour`  
+**Sync Mode:** `BehaviourSyncMode.None`
+
+## Configuration Fields
+
+<ResponseField name="iconSpriteRenderer" type="SpriteRenderer">
+  Reference to the SpriteRenderer component that displays the role icon. Auto-detected if not assigned.
+</ResponseField>
+
+<ResponseField name="maxDistance" type="float" default="50f">
+  Maximum distance in meters at which the icon remains visible. Icons beyond this distance are automatically hidden.
+</ResponseField>
+
+<ResponseField name="iconScale" type="float" default="0.3f">
+  Scale multiplier for the icon. Applied as `Vector3.one * iconScale`.
+</ResponseField>
+
+<ResponseField name="heightOffset" type="float" default="1f">
+  Vertical offset in meters above the player's head tracking data position.
+</ResponseField>
+
+<ResponseField name="lockYAxis" type="bool" default="true">
+  When true, icon only rotates on the Y-axis to face the local player. When false, icon uses full 3D rotation.
+</ResponseField>
+
+<ResponseField name="distanceCheckInterval" type="float" default="0.5f">
+  Interval in seconds between distance checks for visibility optimization.
+</ResponseField>
+
+<ResponseField name="rotationUpdateInterval" type="float" default="0.033f">
+  Interval in seconds between rotation updates (~30 FPS). Position updates occur every frame when visible.
+</ResponseField>
+
+## Public Methods
+
+### SetupIcon
+
+Initializes the icon follower with a target player and role sprite.
+
+```csharp
+public void SetupIcon(VRCPlayerApi player, Sprite roleSprite)
+```
+
+<ParamField path="player" type="VRCPlayerApi" required>
+  The VRChat player API reference to follow
+</ParamField>
+
+<ParamField path="roleSprite" type="Sprite" required>
+  The sprite to display for the player's role. If null, displays a red debug color.
+</ParamField>
+
+**Behavior:**
+- Assigns the target player and sprite
+- Initializes cached references (transform, GameObject, local player)
+- Configures sprite renderer with proper sorting order (100)
+- Auto-flips sprite horizontally if target is the local player
+- Sets initial position above player's head
+- Updates rotation to face local player
+- Performs initial distance check for visibility
+
+**Example:**
+
+```csharp
+// Get an icon from the pool
+GameObject iconObj = GetIconFromPool();
+IconFollower follower = iconObj.GetComponent<IconFollower>();
+
+// Setup for a player with their role sprite
+follower.SetupIcon(player, adminSprite);
+iconObj.SetActive(true);
+```
+
+### CleanupIcon
+
+Resets the icon follower and prepares it for reuse in the pool.
+
+```csharp
+public void CleanupIcon()
+```
+
+**Behavior:**
+- Sets `isInitialized` to false
+- Clears target player reference
+- Disables the sprite renderer
+- Stops all update loops
+
+**Example:**
+
+```csharp
+// Before returning icon to pool
+IconFollower follower = icon.GetComponent<IconFollower>();
+follower.CleanupIcon();
+icon.SetActive(false);
+```
+
+### IsActive
+
+Checks if the icon is currently initialized and visible.
+
+```csharp
+public bool IsActive()
+```
+
+<ResponseField name="return" type="bool">
+  Returns `true` if the icon is initialized and within visible range, `false` otherwise.
+</ResponseField>
+
+**Example:**
+
+```csharp
+if (follower.IsActive())
+{
+    Debug.Log("Icon is currently visible to the local player");
+}
+```
+
+### GetTargetPlayer
+
+Retrieves the player that this icon is following.
+
+```csharp
+public VRCPlayerApi GetTargetPlayer()
+```
+
+<ResponseField name="return" type="VRCPlayerApi">
+  The VRCPlayerApi instance being followed, or null if not initialized.
+</ResponseField>
+
+**Example:**
+
+```csharp
+VRCPlayerApi player = follower.GetTargetPlayer();
+if (player != null && player.IsValid())
+{
+    Debug.Log($"Following: {player.displayName}");
+}
+```
+
+### GetCurrentDistance
+
+Gets the last calculated distance between the local player and the target player.
+
+```csharp
+public float GetCurrentDistance()
+```
+
+<ResponseField name="return" type="float">
+  Distance in meters from local player to target player. Updated every `distanceCheckInterval`.
+</ResponseField>
+
+**Example:**
+
+```csharp
+float distance = follower.GetCurrentDistance();
+Debug.Log($"Player is {distance:F1}m away");
+```
+
+## Update Lifecycle
+
+The `Update()` method runs every frame with optimized intervals:
+
+1. **Validation Check** (every frame)
+   - Verifies target player is valid
+   - Disables icon if player disconnected
+
+2. **Position Update** (every frame, when in range)
+   - Updates icon position to player's head + height offset
+   - Only runs when `isWithinRange` is true
+
+3. **Rotation Update** (every `rotationUpdateInterval`)
+   - Rotates icon to face local player's head
+   - Respects `lockYAxis` setting
+   - Default: ~30 FPS (0.033s interval)
+
+4. **Distance Check** (every `distanceCheckInterval`)
+   - Calculates distance to local player
+   - Toggles visibility based on `maxDistance`
+   - Default: 2 FPS (0.5s interval)
+
+**Performance Notes:**
+- Position updates run every frame for smooth tracking
+- Rotation and distance checks use intervals to reduce overhead
+- Icons automatically disable when out of range
+- Invalid players trigger immediate cleanup
+
+## Position Calculation
+
+The icon position is calculated using VRChat's head tracking data:
+
+```csharp
+VRCPlayerApi.TrackingData headData = targetPlayer.GetTrackingData(VRCPlayerApi.TrackingDataType.Head);
+Vector3 position = headData.position + (Vector3.up * heightOffset);
+```
+
+This ensures:
+- Accurate positioning in VR (uses actual head position)
+- Proper offset for desktop users
+- Consistent height above players regardless of avatar
+
+## Rotation Behavior
+
+### Y-Axis Lock (Default)
+
+When `lockYAxis = true`:
+- Icon only rotates horizontally
+- Maintains upright orientation
+- Better for 2D sprites
+
+```csharp
+Vector3 euler = playerHeadRotation.eulerAngles;
+euler.x = 0;  // No pitch
+euler.z = 0;  // No roll
+transform.rotation = Quaternion.Euler(euler);
+```
+
+### Full 3D Rotation
+
+When `lockYAxis = false`:
+- Icon fully faces local player camera
+- Uses LookRotation for 3D billboarding
+
+```csharp
+Vector3 lookDirection = transform.position - localHeadData.position;
+transform.rotation = Quaternion.LookRotation(lookDirection);
+```
+
+## Sprite Flipping
+
+Icons automatically flip horizontally for the local player:
+
+```csharp
+iconSpriteRenderer.flipX = (targetPlayer == localPlayer);
+```
+
+This creates a "mirror effect" where:
+- Other players see the icon normally
+- Local player sees their own icon flipped
+- Useful for directional icons (arrows, badges)
+
+## Distance-Based Visibility
+
+Visibility toggles based on distance checks:
+
+```csharp
+currentDistance = Vector3.Distance(localPlayer.GetPosition(), GetTargetPlayerPosition());
+bool shouldBeActive = currentDistance <= maxDistance;
+
+if (shouldBeActive != isWithinRange)
+{
+    isWithinRange = shouldBeActive;
+    if (isWithinRange)
+        EnableIcon();   // Shows sprite, updates position/rotation
+    else
+        DisableIcon();  // Hides sprite, stops updates
+}
+```
+
+**Benefits:**
+- Reduces rendering load for distant players
+- Prevents icon clutter in large worlds
+- Smooth transitions via interval-based checks
+
+## Integration Example
+
+Typical usage with UserIconManager:
+
+```csharp
+// UserIconManager creates/reuses icon
+GameObject icon = GetIconFromPool();
+icon.name = $"Icon_{player.displayName}_{roleName}";
+
+IconFollower follower = icon.GetComponent<IconFollower>();
+follower.SetupIcon(player, roleSprite);
+icon.SetActive(true);
+
+// Store in active icons dictionary
+activeIcons[player.playerId.ToString()] = icon;
+
+// Later, when player leaves or role changes
+follower.CleanupIcon();
+ReturnIconToPool(icon);
+```
+
+## Performance Characteristics
+
+| Operation | Frequency | Cost |
+|-----------|-----------|------|
+| Position update | Every frame (in range) | Low |
+| Rotation update | ~30 FPS | Low |
+| Distance check | ~2 FPS | Very Low |
+| Player validation | Every frame | Negligible |
+
+**Optimization Tips:**
+- Increase `distanceCheckInterval` for less frequent visibility checks
+- Increase `rotationUpdateInterval` if icons don't need smooth rotation
+- Reduce `maxDistance` to cull more distant icons
+- Use object pooling (handled by UserIconManager)
+
+## See Also
+
+- [UserIconManager](/api/user-icon-manager) - Manages icon lifecycle and pooling
+- [Role Setup](/configuration/role-setup) - Define roles and assign sprites
+- [JSON Configuration](/guides/json-configuration) - Remote role data format

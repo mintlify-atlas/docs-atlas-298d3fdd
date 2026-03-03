@@ -1,0 +1,242 @@
+---
+title: 'IconFollower Configuration'
+description: 'Configure individual icon behavior and performance settings'
+icon: 'arrows-to-dot'
+---
+
+The `IconFollower` component is attached to each icon prefab and controls how icons follow players, update their position and rotation, and optimize performance based on distance.
+
+## Component Setup
+
+Add the `IconFollower` script to your icon prefab GameObject. The prefab should also include a `SpriteRenderer` component as a child object.
+
+```csharp
+IconPrefab
+├── IconFollower.cs
+└── SpriteRenderer (child object)
+```
+
+## Configuration Parameters
+
+### References
+
+<ParamField path="iconSpriteRenderer" type="SpriteRenderer">
+  Reference to the SpriteRenderer component that displays the role icon. If not set, the script will automatically find it in children.
+  
+  **Default**: Auto-detected from children
+</ParamField>
+
+### Behavior Settings
+
+<ParamField path="maxDistance" type="float" default="50">
+  Maximum distance (in meters) at which the icon remains visible. Icons beyond this distance are automatically disabled to save performance.
+  
+  **Recommended values**:
+  - Casual worlds: `50`
+  - Crowded worlds: `30`
+  - Massive worlds: `20`
+</ParamField>
+
+<ParamField path="iconScale" type="float" default="0.3">
+  Scale multiplier for the icon size. Applied to the icon's transform.
+  
+  **Example**: `0.3` = 30% of original size
+</ParamField>
+
+<ParamField path="heightOffset" type="float" default="1">
+  Vertical offset (in meters) above the player's head position where the icon appears.
+  
+  **Default**: `1.0` meter above head tracking position
+</ParamField>
+
+<ParamField path="lockYAxis" type="bool" default="true">
+  When enabled, the icon only rotates horizontally to face the camera. When disabled, the icon fully rotates in 3D to face the camera.
+  
+  **Recommended**: `true` for cleaner appearance
+</ParamField>
+
+### Optimization Settings
+
+<ParamField path="distanceCheckInterval" type="float" default="0.5">
+  Time interval (in seconds) between distance checks to determine if the icon should be visible.
+  
+  Lower values = more responsive but higher CPU usage  
+  Higher values = better performance but slight delay
+  
+  **Performance impact**: Reduces distance calculations from 60/sec to 2/sec (96% reduction at default)
+</ParamField>
+
+<ParamField path="rotationUpdateInterval" type="float" default="0.033">
+  Time interval (in seconds) between rotation updates. Default is ~30 FPS.
+  
+  Position updates occur every frame for smooth tracking, but rotation can update less frequently without noticeable quality loss.
+  
+  **Default**: `0.033` seconds (~30 FPS)  
+  **Performance impact**: 50% reduction in rotation calculations
+</ParamField>
+
+## Performance Features
+
+### Distance-Based Culling
+
+The IconFollower automatically disables icons beyond `maxDistance`:
+
+```csharp
+// From IconFollower.cs:119-145
+private void CheckDistanceAndToggle()
+{
+    currentDistance = Vector3.Distance(
+        localPlayer.GetPosition(), 
+        GetTargetPlayerPosition()
+    );
+    bool shouldBeActive = currentDistance <= maxDistance;
+    
+    if (shouldBeActive != isWithinRange)
+    {
+        isWithinRange = shouldBeActive;
+        if (isWithinRange)
+            EnableIcon();
+        else
+            DisableIcon();
+    }
+}
+```
+
+### Optimized Update Cycle
+
+The component uses interval-based checks to reduce CPU usage:
+
+```csharp
+// From IconFollower.cs:53-85
+void Update()
+{
+    if (isWithinRange)
+    {
+        UpdatePosition();  // Every frame for smooth tracking
+        
+        if (Time.time >= nextRotationUpdate)
+        {
+            UpdateRotation();  // ~30 FPS
+            nextRotationUpdate = Time.time + rotationUpdateInterval;
+        }
+    }
+    
+    if (Time.time >= nextDistanceCheck)
+    {
+        CheckDistanceAndToggle();  // Every 0.5 seconds
+        nextDistanceCheck = Time.time + distanceCheckInterval;
+    }
+}
+```
+
+## Recommended Configurations
+
+<AccordionGroup>
+  <Accordion title="Casual Worlds (20-40 players)">
+    ```yaml
+    maxDistance: 50
+    iconScale: 0.3
+    heightOffset: 1.0
+    lockYAxis: true
+    distanceCheckInterval: 0.5
+    rotationUpdateInterval: 0.033
+    ```
+    
+    Balanced settings for smaller worlds with good visibility range.
+  </Accordion>
+
+  <Accordion title="Crowded Worlds (40-60 players)">
+    ```yaml
+    maxDistance: 30
+    iconScale: 0.3
+    heightOffset: 1.0
+    lockYAxis: true
+    distanceCheckInterval: 0.75
+    rotationUpdateInterval: 0.033
+    ```
+    
+    Reduced distance and slower checks for better performance.
+  </Accordion>
+
+  <Accordion title="Massive Worlds (60-80 players)">
+    ```yaml
+    maxDistance: 20
+    iconScale: 0.3
+    heightOffset: 1.0
+    lockYAxis: true
+    distanceCheckInterval: 1.0
+    rotationUpdateInterval: 0.05
+    ```
+    
+    Aggressive optimization for maximum player count.
+  </Accordion>
+</AccordionGroup>
+
+## Public Methods
+
+The IconFollower exposes these methods for the UserIconManager:
+
+### SetupIcon
+
+```csharp
+public void SetupIcon(VRCPlayerApi player, Sprite roleSprite)
+```
+
+Initializes the icon for a specific player with their role sprite.
+
+### CleanupIcon
+
+```csharp
+public void CleanupIcon()
+```
+
+Resets the icon for pool reuse.
+
+### IsActive
+
+```csharp
+public bool IsActive()
+```
+
+Returns whether the icon is currently visible and tracking.
+
+### GetCurrentDistance
+
+```csharp
+public float GetCurrentDistance()
+```
+
+Returns the current distance from the local player.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Icons flickering or disappearing">
+    **Cause**: `distanceCheckInterval` too high or `maxDistance` too small
+    
+    **Solution**:
+    - Reduce `distanceCheckInterval` to 0.25-0.5 seconds
+    - Increase `maxDistance` to 30-50 meters
+  </Accordion>
+
+  <Accordion title="Icons causing FPS drops">
+    **Cause**: Too many icons updating simultaneously
+    
+    **Solution**:
+    - Increase `distanceCheckInterval` to 0.75-1.0 seconds
+    - Increase `rotationUpdateInterval` to 0.05 seconds
+    - Reduce `maxDistance` to show fewer icons
+  </Accordion>
+
+  <Accordion title="Icons not facing camera properly">
+    **Cause**: `lockYAxis` setting incorrect for your use case
+    
+    **Solution**:
+    - For flat billboards: set `lockYAxis = true`
+    - For 3D rotation: set `lockYAxis = false`
+  </Accordion>
+</AccordionGroup>
+
+<Info>
+  The IconFollower component is designed to work seamlessly with the UserIconManager's pooling system. These settings apply to each individual icon instance.
+</Info>

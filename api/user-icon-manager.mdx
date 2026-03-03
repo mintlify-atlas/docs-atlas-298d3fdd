@@ -1,0 +1,680 @@
+---
+title: 'UserIconManager'
+description: 'Central manager for role icons with JSON loading, pooling, and player tracking'
+icon: 'users-gear'
+---
+
+## Overview
+
+The `UserIconManager` is the central controller for the VRChat Role Icons system. It loads role data from remote JSON, manages player-to-role mappings, handles icon pooling for performance, and coordinates icon lifecycle for all players in the instance.
+
+**Namespace:** Global  
+**Inherits:** `UdonSharpBehaviour`  
+**Sync Mode:** `BehaviourSyncMode.None`
+
+## Configuration Fields
+
+### Core Configuration
+
+<ResponseField name="rolesJsonUrl" type="VRCUrl" required>
+  URL to the remote JSON file containing role definitions and user assignments. Supports GitHub raw URLs, Pastebin, or any CORS-enabled endpoint.
+</ResponseField>
+
+<ResponseField name="iconPrefab" type="GameObject" required>
+  Prefab containing an IconFollower component. Used to instantiate new icons in the pool.
+</ResponseField>
+
+<ResponseField name="updateInterval" type="float" default="60f">
+  Interval in seconds between full player icon updates. Balances freshness with performance.
+</ResponseField>
+
+### Role Assets
+
+<ResponseField name="roleSprites" type="Sprite[]" required>
+  Array of sprite assets for role icons. Must match indices with `roleNames`.
+</ResponseField>
+
+<ResponseField name="roleNames" type="string[]" required>
+  Array of role identifiers matching JSON role keys. Must align with `roleSprites` indices.
+</ResponseField>
+
+**Example Configuration:**
+```csharp
+roleNames:  ["admin", "moderator", "vip", "supporter"]
+roleSprites: [adminSprite, modSprite, vipSprite, supporterSprite]
+```
+
+### Optimization
+
+<ResponseField name="maxIconPool" type="int" default="20">
+  Maximum number of icon GameObjects in the pool. Limits memory usage in large instances.
+</ResponseField>
+
+<ResponseField name="useBatchedUpdates" type="bool" default="true">
+  Enables batched player updates to distribute CPU load over multiple frames.
+</ResponseField>
+
+<ResponseField name="playersPerBatch" type="int" default="10">
+  Number of players to process per batch when batched updates are enabled.
+</ResponseField>
+
+### Debug
+
+<ResponseField name="enableDebugLogs" type="bool" default="false">
+  Enables detailed logging for troubleshooting role assignments and icon lifecycle.
+</ResponseField>
+
+## Public Methods
+
+### LoadRolesFromJson
+
+Initiates loading of role data from the configured remote JSON URL.
+
+```csharp
+public void LoadRolesFromJson()
+```
+
+**Behavior:**
+- Triggers `VRCStringDownloader.LoadUrl()` with the configured URL
+- Asynchronous operation - result delivered via `OnStringLoadSuccess` or `OnStringLoadError`
+- Automatically called on Start and every 5 minutes (300s) thereafter
+- Logs debug message if `enableDebugLogs` is true
+
+**Example:**
+
+```csharp
+// Manual refresh of role data
+public void OnRefreshButtonPress()
+{
+    userIconManager.LoadRolesFromJson();
+}
+```
+
+### UpdatePlayerIcons
+
+Performs a full update of all player icons based on current role assignments.
+
+```csharp
+public void UpdatePlayerIcons()
+```
+
+**Behavior:**
+- Gets all active players in the instance
+- Updates or creates icons for players with assigned roles
+- Removes icons from players without roles
+- Cleans up icons for disconnected players
+- Respects role priority when players have multiple roles
+
+**Example:**
+
+```csharp
+// After manually updating role assignments
+private void OnRoleAssignmentChanged()
+{
+    userIconManager.UpdatePlayerIcons();
+}
+```
+
+**Performance Notes:**
+- Can be expensive in large instances (40+ players)
+- Consider using batched updates via `useBatchedUpdates`
+- Automatically called every `updateInterval` seconds
+
+### OnPlayerJoined
+
+VRChat callback triggered when a player joins the instance.
+
+```csharp
+public override void OnPlayerJoined(VRCPlayerApi player)
+```
+
+<ParamField path="player" type="VRCPlayerApi">
+  The player who joined the instance
+</ParamField>
+
+**Behavior:**
+- Stores player reference in `lastJoinedPlayer`
+- Schedules `UpdateSinglePlayer()` after 2-second delay
+- Logs join event if debug logging enabled
+
+**Implementation:**
+
+```csharp
+public override void OnPlayerJoined(VRCPlayerApi player)
+{
+    SendCustomEventDelayedSeconds(nameof(UpdateSinglePlayer), 2f);
+    lastJoinedPlayer = player;
+    DebugLog($"Player joined: {player.displayName}");
+}
+```
+
+### OnPlayerLeft
+
+VRChat callback triggered when a player leaves the instance.
+
+```csharp
+public override void OnPlayerLeft(VRCPlayerApi player)
+```
+
+<ParamField path="player" type="VRCPlayerApi">
+  The player who left the instance
+</ParamField>
+
+**Behavior:**
+- Removes player's icon immediately
+- Returns icon GameObject to pool
+- Cleans up active icon tracking
+- Logs leave event if debug logging enabled
+
+**Implementation:**
+
+```csharp
+public override void OnPlayerLeft(VRCPlayerApi player)
+{
+    RemovePlayerIcon(player.playerId.ToString());
+    DebugLog($"Player left: {player.displayName}");
+}
+```
+
+### OnStringLoadSuccess
+
+VRChat callback for successful remote string download.
+
+```csharp
+public override void OnStringLoadSuccess(IVRCStringDownload result)
+```
+
+<ParamField path="result" type="IVRCStringDownload">
+  Download result containing the JSON string in `result.Result`
+</ParamField>
+
+**Behavior:**
+- Parses JSON using `VRCJson.TryDeserializeFromJson()`
+- Validates JSON structure (expects root `"roles"` key)
+- Stores parsed data in `rolesData` dictionary
+- Calls `ProcessRolesData()` to build user-to-role mappings
+- Triggers `UpdatePlayerIcons()` to apply new assignments
+- Logs success and role count if debug enabled
+
+**Example JSON Structure:**
+
+```json
+{
+  "roles": {
+    "admin": {
+      "priority": 100,
+      "users": ["Alice", "Bob"]
+    },
+    "moderator": {
+      "priority": 50,
+      "users": ["Charlie"]
+    }
+  }
+}
+```
+
+**Error Handling:**
+
+```csharp
+if (!VRCJson.TryDeserializeFromJson(result.Result, out DataToken jsonResult))
+{
+    DebugLog("Error parsing JSON");
+    return;
+}
+```
+
+### OnStringLoadError
+
+VRChat callback for failed remote string download.
+
+```csharp
+public override void OnStringLoadError(IVRCStringDownload result)
+```
+
+<ParamField path="result" type="IVRCStringDownload">
+  Download result containing error information in `result.Error`
+</ParamField>
+
+**Behavior:**
+- Logs error message if debug logging enabled
+- Does not modify existing role data
+- System continues using last successful load
+
+**Implementation:**
+
+```csharp
+public override void OnStringLoadError(IVRCStringDownload result)
+{
+    DebugLog($"Error loading JSON: {result.Error}");
+}
+```
+
+## Pooling System
+
+The manager uses an efficient object pooling system to minimize instantiation overhead:
+
+### GetIconFromPool
+
+Retrieves an available icon from the pool.
+
+```csharp
+private GameObject GetIconFromPool()
+```
+
+<ResponseField name="return" type="GameObject">
+  Available icon GameObject, or null if pool is full or all icons in use.
+</ResponseField>
+
+**Implementation:**
+
+```csharp
+private GameObject GetIconFromPool()
+{
+    for (int i = 0; i < poolSize; i++)
+    {
+        if (poolInUse[i] == 0 && iconPool[i] != null)
+        {
+            poolInUse[i] = 1;  // Mark as in use
+            return iconPool[i];
+        }
+    }
+    return null;
+}
+```
+
+### CreateNewIcon
+
+Instantiates a new icon and adds it to the pool.
+
+```csharp
+private GameObject CreateNewIcon()
+```
+
+<ResponseField name="return" type="GameObject">
+  Newly created icon GameObject, or null if pool is full or prefab is null.
+</ResponseField>
+
+**Implementation:**
+
+```csharp
+private GameObject CreateNewIcon()
+{
+    if (iconPrefab == null || poolSize >= maxIconPool) return null;
+    
+    GameObject newIcon = Instantiate(iconPrefab);
+    if (newIcon != null)
+    {
+        iconPool[poolSize] = newIcon;
+        poolInUse[poolSize] = 1;  // Mark as in use
+        poolSize++;
+        newIcon.SetActive(false);
+        return newIcon;
+    }
+    
+    return null;
+}
+```
+
+### ReturnIconToPool
+
+Returns an icon to the pool for reuse.
+
+```csharp
+private void ReturnIconToPool(GameObject icon)
+```
+
+<ParamField path="icon" type="GameObject">
+  Icon GameObject to return to the pool
+</ParamField>
+
+**Behavior:**
+- Calls `CleanupIcon()` on the IconFollower component
+- Deactivates the GameObject
+- Marks pool slot as available (`poolInUse[i] = 0`)
+
+**Implementation:**
+
+```csharp
+private void ReturnIconToPool(GameObject icon)
+{
+    if (icon == null) return;
+    
+    IconFollower follower = icon.GetComponent<IconFollower>();
+    if (follower != null)
+    {
+        follower.CleanupIcon();
+    }
+    
+    icon.SetActive(false);
+    
+    for (int i = 0; i < poolSize; i++)
+    {
+        if (iconPool[i] == icon)
+        {
+            poolInUse[i] = 0;  // Mark as available
+            break;
+        }
+    }
+}
+```
+
+## Role Priority System
+
+When a player matches multiple roles, priority determines which icon is displayed.
+
+### Priority Resolution
+
+```csharp
+private void ProcessRolesData()
+{
+    userRoleMap.Clear();
+    DataList roleKeys = rolesData.GetKeys();
+    
+    for (int i = 0; i < roleKeys.Count; i++)
+    {
+        string roleName = roleKeys[i].String;
+        DataDictionary roleDict = rolesData[roleName].DataDictionary;
+        DataList users = roleDict["users"].DataList;
+        int priority = GetRolePriority(roleDict);
+        
+        for (int j = 0; j < users.Count; j++)
+        {
+            string username = users[j].String;
+            
+            // Only assign if no role assigned, or this role has higher priority
+            if (!userRoleMap.ContainsKey(username) || 
+                priority > GetUserRolePriority(username))
+            {
+                userRoleMap[username] = roleName;
+            }
+        }
+    }
+}
+```
+
+### Priority Helper Methods
+
+```csharp
+private int GetRolePriority(DataDictionary roleDict)
+{
+    if (roleDict.TryGetValue("priority", out DataToken priorityToken))
+        return (int)priorityToken.Number;
+    return 0;
+}
+
+private int GetUserRolePriority(string username)
+{
+    if (!userRoleMap.TryGetValue(username, out DataToken roleToken))
+        return 0;
+    
+    string roleName = roleToken.String;
+    if (!rolesData.TryGetValue(roleName, out DataToken roleData))
+        return 0;
+    
+    return GetRolePriority(roleData.DataDictionary);
+}
+```
+
+**Example Priority:**
+
+```json
+{
+  "admin": { "priority": 100, "users": ["Alice"] },
+  "vip": { "priority": 50, "users": ["Alice", "Bob"] }
+}
+```
+
+Result: Alice gets admin icon (priority 100 > 50)
+
+## Batched Update System
+
+For large instances, batched updates distribute processing load:
+
+```csharp
+private void UpdatePlayerIconsBatched()
+{
+    playerCache = VRCPlayerApi.GetPlayers(playerCache);
+    
+    // Count valid players
+    playerCount = 0;
+    foreach (VRCPlayerApi player in playerCache)
+    {
+        if (player != null && player.IsValid())
+            playerCount++;
+        else
+            break;
+    }
+    
+    // Process one batch
+    int startIndex = currentBatchIndex;
+    int endIndex = Mathf.Min(currentBatchIndex + playersPerBatch, playerCount);
+    
+    for (int i = startIndex; i < endIndex; i++)
+    {
+        if (playerCache[i] != null && playerCache[i].IsValid())
+        {
+            UpdatePlayerIcon(playerCache[i]);
+        }
+    }
+    
+    // Advance to next batch
+    currentBatchIndex += playersPerBatch;
+    if (currentBatchIndex >= playerCount)
+    {
+        currentBatchIndex = 0;  // Wrap around
+        CleanupUnusedIcons();   // Cleanup after full cycle
+    }
+}
+```
+
+**Benefits:**
+- Spreads 40 players across 4 frames (10 per batch)
+- Reduces frame time spikes
+- Maintains responsiveness in large instances
+
+## Update Lifecycle
+
+The `Update()` method manages periodic operations:
+
+```csharp
+void Update()
+{
+    float currentTime = Time.time;
+    
+    // Icon updates (every updateInterval seconds)
+    if (currentTime >= nextUpdateTime)
+    {
+        if (useBatchedUpdates)
+            UpdatePlayerIconsBatched();
+        else
+            UpdatePlayerIcons();
+        nextUpdateTime = currentTime + updateInterval;
+    }
+    
+    // JSON refresh (every 5 minutes)
+    if (currentTime >= nextJsonUpdateTime)
+    {
+        LoadRolesFromJson();
+        nextJsonUpdateTime = currentTime + JSON_UPDATE_INTERVAL;  // 300s
+    }
+}
+```
+
+**Timing:**
+- Icon updates: Every 60 seconds (configurable)
+- JSON refresh: Every 300 seconds (5 minutes, hardcoded)
+- Player join: 2-second delay
+- Player leave: Immediate
+
+## Data Structures
+
+### Active Icons Dictionary
+
+```csharp
+private DataDictionary activeIcons;  // playerId (string) -> GameObject
+```
+
+Tracks currently active icons by player ID.
+
+### User Role Map
+
+```csharp
+private DataDictionary userRoleMap;  // username (string) -> roleName (string)
+```
+
+Maps display names to their assigned role after priority resolution.
+
+### Role Data
+
+```csharp
+private DataDictionary rolesData;  // roleName -> { priority, users[] }
+```
+
+Stores parsed JSON role definitions.
+
+### Icon Pool
+
+```csharp
+private GameObject[] iconPool;    // Pool of reusable icons
+private int[] poolInUse;          // 0 = available, 1 = in use
+private int poolSize;             // Current pool size
+```
+
+Manages object pooling state.
+
+## Cleanup Operations
+
+### CleanupDisconnectedPlayers
+
+Removes icons for players no longer in the instance:
+
+```csharp
+private void CleanupDisconnectedPlayers(DataList currentPlayerIds)
+{
+    DataList activeKeys = activeIcons.GetKeys();
+    
+    for (int i = 0; i < activeKeys.Count; i++)
+    {
+        string playerId = activeKeys[i].String;
+        bool found = false;
+        
+        for (int j = 0; j < currentPlayerIds.Count; j++)
+        {
+            if (currentPlayerIds[j].String == playerId)
+            {
+                found = true;
+                break;
+            }
+        }
+        
+        if (!found)
+            RemovePlayerIcon(playerId);
+    }
+}
+```
+
+### CleanupUnusedIcons
+
+Removes icons that are null or inactive:
+
+```csharp
+private void CleanupUnusedIcons()
+{
+    DataList activeKeys = activeIcons.GetKeys();
+    
+    for (int i = 0; i < activeKeys.Count; i++)
+    {
+        GameObject icon = (GameObject)activeIcons[activeKeys[i]].Reference;
+        
+        if (icon == null || !icon.activeSelf)
+        {
+            activeIcons.Remove(activeKeys[i]);
+        }
+    }
+}
+```
+
+## Error Handling
+
+### Missing Prefab
+
+```csharp
+if (iconPrefab == null)
+{
+    Debug.LogError("[UserIconManager] Icon Prefab no asignado!");
+    return;
+}
+```
+
+### Missing Sprites
+
+```csharp
+if (roleSprites == null || roleSprites.Length == 0)
+{
+    Debug.LogError("[UserIconManager] No hay sprites de roles asignados!");
+    return;
+}
+```
+
+### Role Not Found
+
+```csharp
+Sprite roleSprite = GetRoleSprite(roleName);
+if (roleSprite == null)
+{
+    DebugLog($"No sprite found for role: {roleName}");
+    return;  // Skip icon creation
+}
+```
+
+### Pool Full
+
+```csharp
+if (poolSize >= maxIconPool)
+{
+    DebugLog("Icon pool is full, no more can be created");
+    return;
+}
+```
+
+## Integration Example
+
+Complete setup in Unity Editor:
+
+```
+1. Create UserIconManager GameObject
+2. Add UserIconManager component
+3. Configure fields:
+   - rolesJsonUrl: https://raw.githubusercontent.com/user/repo/main/roles.json
+   - iconPrefab: Drag IconPrefab from Project
+   - roleNames: ["admin", "mod", "vip"]
+   - roleSprites: [AdminSprite, ModSprite, VIPSprite]
+   - maxIconPool: 20
+   - useBatchedUpdates: true
+   - playersPerBatch: 10
+4. Create IconPrefab with IconFollower component
+5. Test in VRChat
+```
+
+## Performance Considerations
+
+| Setting | Low (5 players) | Medium (20 players) | High (40 players) |
+|---------|-----------------|---------------------|-------------------|
+| updateInterval | 30s | 60s | 120s |
+| useBatchedUpdates | false | true | true |
+| playersPerBatch | N/A | 10 | 10 |
+| maxIconPool | 10 | 20 | 30 |
+
+**Optimization Tips:**
+- Increase `updateInterval` for less frequent updates
+- Enable `useBatchedUpdates` for 20+ players
+- Set `maxIconPool` to expected max role holders + 5
+- Use `enableDebugLogs` only during development
+- Host JSON on CDN for fast loading
+
+## See Also
+
+- [IconFollower](/api/icon-follower) - Individual icon component
+- [JSON Configuration](/guides/json-configuration) - Remote role data structure
+- [Role Setup](/configuration/role-setup) - Setting up roles and sprites
+- [Performance Tuning](/configuration/performance-tuning) - Optimization strategies

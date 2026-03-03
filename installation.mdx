@@ -1,0 +1,380 @@
+---
+title: Installation
+description: Step-by-step installation guide for VRChat Role Icons in Unity
+---
+
+## System requirements
+
+### Unity version
+
+- **Unity 2022.3.6f1** (VRChat recommended version)
+- Unity 2022.3.22f1 or other compatible 2022.3.x versions may work
+
+<Warning>
+  VRChat frequently updates their recommended Unity version. Always check the [VRChat Creator Companion](https://vcc.docs.vrchat.com/) for the current recommended Unity version before starting a new project.
+</Warning>
+
+### Required dependencies
+
+<Steps>
+  <Step title="VRChat SDK3 - Worlds">
+    Install the VRChat SDK for world creation:
+    
+    **Via VRChat Creator Companion (recommended):**
+    1. Download and install [VRChat Creator Companion](https://vcc.docs.vrchat.com/)
+    2. Create a new world project or add the SDK to an existing project
+    3. The Creator Companion will automatically install the correct SDK version
+    
+    **Manual installation:**
+    1. Download the latest SDK from [VRChat SDK Downloads](https://vrchat.com/home/download)
+    2. Import the `.unitypackage` into your Unity project
+    3. Follow the import wizard prompts
+  </Step>
+  
+  <Step title="UdonSharp 1.x">
+    UdonSharp is required to compile the C#-like scripts:
+    
+    **Via VRChat Creator Companion (recommended):**
+    - UdonSharp is included automatically when you add the VRChat Worlds SDK
+    
+    **Manual installation:**
+    1. Visit the [UdonSharp GitHub Releases](https://github.com/vrchat-community/UdonSharp/releases)
+    2. Download the latest `UdonSharp_v1.x.x.unitypackage`
+    3. Import it into your Unity project via Assets → Import Package → Custom Package
+    
+    <Note>
+      UdonSharp 1.x is the current stable version. This system is not compatible with legacy U# 0.x versions.
+    </Note>
+  </Step>
+</Steps>
+
+## Installing VRChat Role Icons
+
+<Steps>
+  <Step title="Download the source files">
+    Obtain the two core script files:
+    
+    - `IconFollower.cs` - Handles individual icon behavior and player tracking
+    - `UserIconManager.cs` - Manages role data and icon assignment
+    
+    Download these from your distribution source (GitHub repository, asset package, etc.).
+  </Step>
+  
+  <Step title="Import scripts into Unity">
+    1. In Unity, navigate to your Project window
+    2. Create a folder structure: `Assets/RoleIcons/Scripts/`
+    3. Copy both `.cs` files into the `Scripts/` folder
+    4. Wait for UdonSharp to compile the scripts (watch the bottom-right progress bar)
+    
+    After compilation completes, you should see no errors in the Console. If you see compilation errors, verify that VRChat SDK and UdonSharp are properly installed.
+  </Step>
+  
+  <Step title="Prepare icon sprites">
+    Create or obtain sprite images for your role icons:
+    
+    **Image specifications:**
+    - **Format**: PNG with transparency
+    - **Dimensions**: 256×256 pixels (recommended) or 512×512 for high detail
+    - **File size**: Under 50KB per sprite (compress if necessary)
+    - **Design**: Simple, high-contrast designs work best at small scales
+    
+    **Import settings:**
+    1. Import your PNG files into Unity (drag into Project window)
+    2. Select each sprite in the Project window
+    3. In the Inspector, configure:
+       ```
+       Texture Type: Sprite (2D and UI)
+       Sprite Mode: Single
+       Pixels Per Unit: 100
+       Mesh Type: Tight
+       Max Size: 256 (or 512)
+       Compression: High Quality
+       Filter Mode: Bilinear
+       ```
+    4. Click "Apply" to save the import settings
+    
+    <Tip>
+      Organize your sprites in an `Assets/RoleIcons/Sprites/` folder for easier management.
+    </Tip>
+  </Step>
+  
+  <Step title="Create the icon prefab">
+    Build the prefab that will be instantiated for each player icon:
+    
+    1. **Create a new GameObject:**
+       - Right-click in Hierarchy → Create Empty
+       - Name it `RoleIconPrefab`
+    
+    2. **Add a Sprite Renderer:**
+       - With RoleIconPrefab selected, click Add Component
+       - Search for and add "Sprite Renderer"
+       - Leave the Sprite field empty (assigned dynamically at runtime)
+       - Set Color to white (255, 255, 255, 255)
+       - Set Sorting Layer to "Default" and Order in Layer to 100
+    
+    3. **Add the IconFollower component:**
+       - Click Add Component
+       - Search for "Icon Follower" (the UdonSharp script)
+       - The component will auto-detect the Sprite Renderer
+       - Configure the settings (or use defaults):
+         ```
+         Max Distance: 50
+         Icon Scale: 0.3
+         Height Offset: 1.0
+         Lock Y Axis: ✓ (checked)
+         Distance Check Interval: 0.5
+         Rotation Update Interval: 0.033
+         ```
+    
+    4. **Create the prefab:**
+       - Drag the RoleIconPrefab GameObject from Hierarchy into your Project window
+       - Unity will create a prefab asset (shown with a blue cube icon)
+       - Delete the GameObject from the Hierarchy (the prefab in Project is what matters)
+    
+    <Note>
+      The IconFollower script will automatically assign the Icon Sprite Renderer field if left empty. However, it's good practice to assign it manually to ensure the reference is correct.
+    </Note>
+  </Step>
+  
+  <Step title="Create the manager GameObject">
+    Set up the main system controller in your scene:
+    
+    1. **Create the GameObject:**
+       - Right-click in Hierarchy → Create Empty
+       - Name it `RoleIconManager`
+       - Position it at (0, 0, 0) or anywhere convenient
+    
+    2. **Add the UserIconManager component:**
+       - Click Add Component
+       - Search for "User Icon Manager"
+       - Add the UdonSharp script
+    
+    3. **Configure initial settings:**
+       You'll configure the full settings later, but verify these sections appear:
+       - Configuration (Roles Json Url, Icon Prefab, Update Interval)
+       - Roles (Role Sprites array, Role Names array)
+       - Optimization (Max Icon Pool, batching settings)
+       - Debug (Enable Debug Logs checkbox)
+  </Step>
+  
+  <Step title="Configure role mappings">
+    Set up which sprites correspond to which role names:
+    
+    1. **Select RoleIconManager** in Hierarchy
+    2. **In the Inspector, expand the "Roles" section**
+    3. **Set Role Sprites array size:**
+       - Click the number next to "Role Sprites"
+       - Enter the number of different roles you have
+       - Array slots will appear below
+    4. **Assign sprites:**
+       - Drag each sprite from Project into the corresponding array slot
+       - Order doesn't matter as long as it matches Role Names
+    5. **Set Role Names array size:**
+       - Set it to the same size as Role Sprites
+    6. **Enter role names:**
+       - Type the exact name of each role (must match your JSON file)
+       - Example: "admin", "moderator", "vip", "member"
+    
+    **Example configuration:**
+    ```
+    Role Sprites (4)
+    ├─ Element 0: AdminCrownSprite
+    ├─ Element 1: ModShieldSprite
+    ├─ Element 2: VipStarSprite
+    └─ Element 3: MemberDotSprite
+    
+    Role Names (4)
+    ├─ Element 0: "admin"
+    ├─ Element 1: "moderator"
+    ├─ Element 2: "vip"
+    └─ Element 3: "member"
+    ```
+    
+    <Warning>
+      Role names are case-sensitive and must match exactly with the keys in your JSON file. "Admin" ≠ "admin".
+    </Warning>
+  </Step>
+  
+  <Step title="Set up your roles JSON file">
+    Create a JSON file defining roles and user assignments:
+    
+    **JSON structure:**
+    ```json
+    {
+      "version": "1.0.0",
+      "lastUpdated": "2026-03-03T10:00:00Z",
+      "roles": {
+        "admin": {
+          "priority": 100,
+          "users": [
+            "VRChatUsername1",
+            "VRChatUsername2"
+          ]
+        },
+        "moderator": {
+          "priority": 90,
+          "users": [
+            "ModeratorName1"
+          ]
+        }
+      }
+    }
+    ```
+    
+    **Priority system:**
+    - Higher numbers = higher priority
+    - If a user appears in multiple roles, their highest priority role is displayed
+    - Recommended range: 0-100
+    
+    **Hosting options:**
+    
+    **GitHub (recommended for version control):**
+    1. Create a public GitHub repository
+    2. Upload your `roles.json` file
+    3. Navigate to the file on GitHub
+    4. Click the "Raw" button
+    5. Copy the URL (format: `https://raw.githubusercontent.com/user/repo/branch/roles.json`)
+    
+    **Pastebin (quick and simple):**
+    1. Go to [Pastebin.com](https://pastebin.com)
+    2. Paste your JSON content
+    3. Set "Paste Exposure" to "Public" or "Unlisted"
+    4. Create the paste
+    5. Click "raw" and copy the URL
+    
+    **Custom web server:**
+    - Upload to any HTTPS-accessible location
+    - Ensure CORS is enabled if serving from a different domain
+    - The URL must return raw JSON content, not HTML
+    
+    <Note>
+      The system fetches the JSON on world load and refreshes it every 5 minutes (300 seconds). You can update the JSON file without republishing your world, and changes will take effect automatically.
+    </Note>
+  </Step>
+  
+  <Step title="Configure the JSON URL">
+    Link your hosted JSON file to the UserIconManager:
+    
+    1. Select RoleIconManager in Hierarchy
+    2. In Inspector, find the "Configuration" section
+    3. Click the small dot next to "Roles Json Url"
+    4. In the VRCUrl field, enter your raw JSON URL
+    5. Assign your RoleIconPrefab to the "Icon Prefab" field
+    6. Set "Update Interval" (60 seconds is a good default)
+  </Step>
+  
+  <Step title="Test in Unity Play Mode">
+    Verify the setup before building:
+    
+    1. Click the Play button in Unity
+    2. Check the Console for messages:
+       ```
+       [UserIconManager] Loading role data from JSON...
+       [UserIconManager] Roles loaded: 3
+       [UserIconManager] Users processed: 12
+       ```
+    3. If you see errors:
+       - **"Error loading JSON"**: Check that your URL is accessible
+       - **"Error parsing JSON"**: Validate your JSON syntax at [JSONLint](https://jsonlint.com/)
+       - **"No sprite found for role"**: Verify role name spelling matches JSON
+    
+    <Tip>
+      Enable "Debug Logs" in the UserIconManager Inspector to see detailed information about icon assignment and player tracking during testing.
+    </Tip>
+  </Step>
+</Steps>
+
+## Optimization settings
+
+Configure performance settings based on your expected player count:
+
+### Small worlds (10-30 players)
+
+```
+Max Icon Pool: 15
+Use Batched Updates: ✓
+Players Per Batch: 10
+Distance Check Interval: 0.5
+Max Distance: 50
+```
+
+### Medium worlds (30-50 players)
+
+```
+Max Icon Pool: 20
+Use Batched Updates: ✓
+Players Per Batch: 15
+Distance Check Interval: 0.5
+Max Distance: 40
+```
+
+### Large worlds (50-80 players)
+
+```
+Max Icon Pool: 20
+Use Batched Updates: ✓
+Players Per Batch: 20
+Distance Check Interval: 1.0
+Max Distance: 30
+```
+
+<Note>
+  These are starting points. Monitor performance in actual use and adjust as needed. See the [Optimization guide](/concepts/optimization) for detailed tuning instructions.
+</Note>
+
+## Building and publishing
+
+<Steps>
+  <Step title="Build your world">
+    1. Go to VRChat SDK → Show Control Panel
+    2. Navigate to the "Builder" tab
+    3. Ensure there are no errors in the validations
+    4. Click "Build & Test" to test locally first
+  </Step>
+  
+  <Step title="Test locally">
+    1. Launch VRChat with the `--enable-debug-gui` launch option
+    2. Join your local test world
+    3. Verify icons appear for users listed in your JSON
+    4. Test distance culling by walking away from other players
+    5. Check Console logs for any runtime errors
+  </Step>
+  
+  <Step title="Publish to VRChat">
+    Once testing is successful:
+    1. Return to VRChat SDK Control Panel
+    2. Click "Build & Publish for Windows"
+    3. Also build for Android if supporting Quest
+    4. Fill out world information and upload
+  </Step>
+</Steps>
+
+## Verification checklist
+
+Before publishing, verify:
+
+- ✓ UdonSharp compiled both scripts without errors
+- ✓ Icon prefab has both SpriteRenderer and IconFollower components
+- ✓ Role Sprites and Role Names arrays are the same size
+- ✓ Role names match JSON keys exactly (case-sensitive)
+- ✓ JSON URL is publicly accessible and returns raw JSON
+- ✓ Icons appear in Play Mode when testing
+- ✓ Performance settings are appropriate for your world size
+- ✓ No errors in Unity Console or VRChat SDK validations
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart guide" icon="rocket" href="/quickstart">
+    Get icons working quickly with a streamlined setup process
+  </Card>
+  <Card title="Configuration" icon="sliders" href="/configuration/icon-follower">
+    Learn about all configuration options and advanced features
+  </Card>
+  <Card title="Optimization" icon="gauge-high" href="/concepts/optimization">
+    Fine-tune performance for your specific use case
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/advanced/troubleshooting">
+    Solutions for common issues and error messages
+  </Card>
+</CardGroup>

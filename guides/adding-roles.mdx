@@ -1,0 +1,184 @@
+---
+title: Adding New Roles
+description: Step-by-step guide to add custom roles to your VRChat world
+---
+
+This guide walks you through the complete process of adding new roles to the VRChat Role Icons system.
+
+## Prerequisites
+
+- Unity project with VRChat SDK3 (Worlds)
+- UdonSharp installed
+- VRChat Role Icons package imported
+- Basic understanding of Unity Editor
+
+## Step-by-Step Process
+
+<Steps>
+  <Step title="Create Role Icon Sprite">
+    First, prepare your role icon following the specifications:
+    
+    - **Size**: 256x256 pixels
+    - **Format**: PNG
+    - **Max file size**: 50KB
+    - **Naming**: Use descriptive names (e.g., `leader_icon.png`, `moderator_icon.png`)
+    
+    <Note>
+      Icons over 50KB may cause performance issues in VRChat. Use PNG optimization tools like TinyPNG or ImageOptim to reduce file size.
+    </Note>
+  </Step>
+
+  <Step title="Import Icon to Unity">
+    1. Drag your PNG file into Unity's `Assets/RoleIcons/Sprites/` folder
+    2. Select the imported sprite in the Project window
+    3. In the Inspector, configure these settings:
+       - **Texture Type**: Sprite (2D and UI)
+       - **Max Size**: 256
+       - **Compression**: High Quality
+       - **Format**: RGBA 32 bit (for transparency support)
+    4. Click **Apply**
+    
+    <Warning>
+      Make sure "Read/Write Enabled" is OFF to avoid memory overhead in VRChat.
+    </Warning>
+  </Step>
+
+  <Step title="Add Sprite to UserIconManager">
+    1. In your scene, locate the GameObject with the `UserIconManager` script
+    2. In the Inspector, find the **Roles** section
+    3. Expand the `Role Sprites` array
+    4. Increase the **Size** by 1
+    5. Drag your imported sprite into the new empty slot
+    
+    The array index position matters - remember it for the next step.
+  </Step>
+
+  <Step title="Add Role Name to Array">
+    In the same `UserIconManager` component:
+    
+    1. Expand the `Role Names` array
+    2. Increase the **Size** by 1 (must match `Role Sprites` size)
+    3. In the new slot, enter the role name **exactly as it appears in your JSON**
+    
+    <CodeGroup>
+    ```text Example Role Names
+    leader
+    secretaries
+    maids
+    butlers
+    guards
+    collaborators
+    ```
+    </CodeGroup>
+    
+    <Warning>
+      The role name must match the JSON key exactly. Case-sensitive. "leader" ≠ "Leader"
+    </Warning>
+    
+    **Critical**: The array indices must align:
+    - `roleSprites[0]` → `roleNames[0]`
+    - `roleSprites[1]` → `roleNames[1]`
+    - etc.
+  </Step>
+
+  <Step title="Update userRoles.json">
+    Add your new role to the JSON configuration:
+    
+    <CodeGroup>
+    ```json userRoles.json
+    {
+      "version": "1.0.0",
+      "lastUpdated": "2026-03-03T12:00:00Z",
+      "roles": {
+        "leader": {
+          "priority": 100,
+          "users": [
+            "YourUsername"
+          ]
+        },
+        "moderators": {
+          "priority": 95,
+          "users": [
+            "ModUsername1",
+            "ModUsername2"
+          ]
+        },
+        "guards": {
+          "priority": 70,
+          "users": [
+            "GuardUsername"
+          ]
+        }
+      }
+    }
+    ```
+    </CodeGroup>
+    
+    See the [JSON Configuration Guide](/guides/json-configuration) for complete schema details.
+  </Step>
+
+  <Step title="Test in Unity Play Mode">
+    1. Click Play in Unity Editor
+    2. Check the Console for any errors:
+       - `[UserIconManager] Icon Prefab no asignado!`
+       - `[UserIconManager] No hay sprites de roles asignados!`
+    3. Enable debug logs by checking `Enable Debug Logs` on UserIconManager
+    4. Look for: `[UserIconManager] Roles loaded: X`
+    
+    <Note>
+      If roles don't appear, verify:
+      - Role name in JSON matches role name in Unity array
+      - Array indices are correctly aligned
+      - VRCUrl points to valid JSON file
+    </Note>
+  </Step>
+
+  <Step title="Upload and Test in VRChat">
+    1. Build & Publish your world
+    2. Join the world in VRChat
+    3. Icons should appear 2 seconds after joining
+    4. Have users with roles join to verify
+    
+    If icons don't appear, check:
+    - JSON URL is publicly accessible
+    - usernames in JSON exactly match VRChat display names
+    - Icon prefab is assigned in UserIconManager
+  </Step>
+</Steps>
+
+## Role Priority Recommendations
+
+Priority determines which icon is shown when a user has multiple roles. Higher priority = higher precedence.
+
+| Role Type | Recommended Priority | Example Roles |
+|-----------|---------------------|---------------|
+| Owner/Leader | 100 | leader, owner |
+| Admins | 90-99 | secretaries, admins |
+| Staff | 80-89 | maids, butlers, moderators |
+| Security | 70-79 | guards, security |
+| Contributors | 60-69 | collaborators, supporters |
+| Members | 50-59 | members, regulars |
+| VIP | 40-49 | vip, donors |
+
+<Note>
+  Based on the code at `UserIconManager.cs:210-221`, the system automatically assigns the highest priority role to each user.
+</Note>
+
+## Quick Verification Checklist
+
+Before uploading your world:
+
+- [ ] Icon sprite is 256x256 PNG, under 50KB
+- [ ] Sprite import settings: Texture Type = Sprite (2D and UI)
+- [ ] Sprite added to `roleSprites` array
+- [ ] Role name added to `roleNames` array at same index
+- [ ] Role name matches JSON key exactly
+- [ ] JSON has valid structure with priority and users array
+- [ ] Test in Unity Play Mode with debug logs enabled
+- [ ] VRCUrl points to publicly accessible JSON file
+
+## Next Steps
+
+- [Custom Icons Guide](/guides/custom-icons) - Learn how to design and optimize role icons
+- [JSON Configuration](/guides/json-configuration) - Complete JSON schema reference
+- [Scaling for Large Worlds](/guides/scaling-for-large-worlds) - Optimize for 80+ players

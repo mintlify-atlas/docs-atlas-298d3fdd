@@ -1,0 +1,95 @@
+---
+title: Introduction
+description: A high-performance role icon system for VRChat worlds that displays floating icons above players based on their assigned roles
+---
+
+## What is VRChat Role Icons?
+
+VRChat Role Icons is an optimized UdonSharp system that displays floating sprite icons above players' heads in your VRChat world. The system automatically assigns icons based on player roles defined in a remote JSON file, making it perfect for communities, events, and organized worlds where you need to visually identify staff members, VIPs, or special guests.
+
+Designed to handle up to 80 concurrent players with minimal performance impact, the system uses advanced optimization techniques including object pooling, distance-based culling, and batched updates to maintain 60+ FPS even in crowded instances.
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Dynamic role assignment" icon="user-tag" href="/configuration/role-setup">
+    Load roles from remote JSON URLs with automatic updates every 5 minutes
+  </Card>
+  <Card title="Performance optimized" icon="gauge-high" href="/concepts/optimization">
+    Object pooling and distance-based rendering for 80+ players at 60 FPS
+  </Card>
+  <Card title="Priority system" icon="layer-group" href="/api/user-icon-manager">
+    Users with multiple roles automatically display their highest priority icon
+  </Card>
+  <Card title="Customizable appearance" icon="paintbrush" href="/configuration/icon-follower">
+    Configure icon size, height offset, viewing distance, and rotation behavior
+  </Card>
+  <Card title="Distance culling" icon="eye-slash" href="/api/icon-follower">
+    Icons automatically hide beyond configurable distance (default 50m)
+  </Card>
+  <Card title="Billboard rotation" icon="arrows-rotate" href="/configuration/icon-follower">
+    Icons always face the viewer with optional Y-axis locking
+  </Card>
+</CardGroup>
+
+## How it works
+
+The system consists of two main components working together:
+
+<Steps>
+  <Step title="UserIconManager loads role data">
+    Fetches a JSON file from a remote URL containing role definitions and user assignments. The system automatically refreshes this data every 5 minutes to pick up changes without requiring a world restart.
+  </Step>
+  
+  <Step title="Icons are assigned to players">
+    When players join, the manager checks if their display name matches any user in the role data. If found, an icon is pulled from the object pool and assigned to that player.
+  </Step>
+  
+  <Step title="IconFollower components track players">
+    Each active icon uses an IconFollower component that smoothly follows the player's head position, rotates to face viewers, and automatically shows/hides based on distance.
+  </Step>
+  
+  <Step title="Optimization systems maintain performance">
+    Object pooling reuses GameObjects, distance checks run every 0.5 seconds instead of every frame, and player updates are batched across multiple frames to distribute CPU load.
+  </Step>
+</Steps>
+
+## Performance characteristics
+
+With 80 concurrent players, the optimized system achieves:
+
+- **75% reduction** in Update() calls per second (4,800 → 1,200)
+- **96% reduction** in distance calculations (4,800/sec → 160/sec)
+- **66% reduction** in memory usage (~15MB → ~5MB)
+- **70% reduction** in CPU usage compared to unoptimized implementation
+
+<Note>
+  The system uses a configurable icon pool (default: 20 active icons maximum). This means only the closest 20 players with roles will display icons simultaneously. This trade-off is essential for maintaining performance in large instances.
+</Note>
+
+## Use cases
+
+**Community worlds**: Identify staff members (moderators, helpers, administrators) at a glance
+
+**Event venues**: Mark event organizers, performers, VIP guests, and security personnel
+
+**Roleplay worlds**: Display character roles like guards, merchants, faction leaders, or quest givers
+
+**Social hubs**: Highlight community contributors, content creators, or verified members
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get your first icons working in under 5 minutes
+  </Card>
+  <Card title="Installation" icon="download" href="/installation">
+    Detailed setup instructions for Unity and VRChat SDK
+  </Card>
+  <Card title="Configuration" icon="sliders" href="/configuration/role-setup">
+    Learn how to configure roles, sprites, and system settings
+  </Card>
+  <Card title="API reference" icon="code" href="/api/user-icon-manager">
+    Complete API documentation for both core components
+  </Card>
+</CardGroup>

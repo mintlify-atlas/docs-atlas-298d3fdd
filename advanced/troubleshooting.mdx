@@ -1,0 +1,706 @@
+---
+title: Troubleshooting Guide
+description: Common issues and solutions for VRChat Role Icons performance and behavior
+---
+
+This guide covers common issues you might encounter and how to resolve them.
+
+## Performance Issues
+
+<AccordionGroup>
+  <Accordion title="Lag with many players (40+ players)">
+    **Symptoms**:
+    - Frame rate drops when many players are nearby
+    - Periodic stuttering every 60 seconds
+    - High CPU usage in VRChat performance overlay
+
+    **Causes**:
+    - Too many active icons
+    - Batching disabled or batch size too large
+    - Distance checks too frequent
+
+    **Solutions**:
+
+    <Steps>
+      <Step title="Reduce Max Icon Pool">
+        Limit simultaneous active icons:
+        ```csharp
+        [SerializeField] private int maxIconPool = 15;  // Down from 20
+        ```
+        
+        **Impact**: Only 15 players can have visible icons simultaneously. Prioritizes nearby players.
+      </Step>
+
+      <Step title="Reduce Max Distance">
+        Hide icons beyond a shorter range:
+        ```csharp
+        [SerializeField] private float maxDistance = 30f;  // Down from 50m
+        ```
+        
+        **Impact**: Icons only visible within 30 meters, reducing active icon count.
+      </Step>
+
+      <Step title="Increase Distance Check Interval">
+        Check distance less frequently:
+        ```csharp
+        [SerializeField] private float distanceCheckInterval = 1.0f;  // Up from 0.5s
+        ```
+        
+        **Impact**: Distance calculations reduced by 50%, but icons take longer to appear/disappear.
+      </Step>
+
+      <Step title="Optimize Batch Size">
+        Increase players per batch to distribute load:
+        ```csharp
+        [SerializeField] private int playersPerBatch = 20;  // Up from 10
+        ```
+        
+        **Impact**: Full update cycle completes faster, but each frame does more work.
+      </Step>
+    </Steps>
+
+    **Recommended preset for 60-80 players**:
+    ```csharp
+    maxIconPool = 20;
+    playersPerBatch = 20;
+    distanceCheckInterval = 1.0f;
+    maxDistance = 20f;
+    ```
+  </Accordion>
+
+  <Accordion title="Frame rate spikes every 60 seconds">
+    **Symptoms**:
+    - Regular stuttering at fixed intervals
+    - Frame time spikes visible in performance graphs
+    - Happens even with few players
+
+    **Cause**: Batched updates might be disabled
+
+    **Solution**:
+
+    Enable batched updates in UserIconManager:
+    ```csharp
+    [SerializeField] private bool useBatchedUpdates = true;
+    ```
+
+    **Before** (unbatched):
+    ```
+    Frame 3600: 48ms ⚠️ (all 80 players updated)
+    ```
+
+    **After** (batched):
+    ```
+    Frames 1-8: 17ms each (10 players per frame)
+    ```
+
+    See [Batched Updates](/advanced/batched-updates) for more details.
+  </Accordion>
+
+  <Accordion title="Memory usage growing over time">
+    **Symptoms**:
+    - VRChat memory usage increases steadily
+    - World becomes laggy after 30+ minutes
+    - Performance degrades without player count changing
+
+    **Cause**: Icons not being properly returned to pool
+
+    **Diagnosis**:
+
+    Enable debug logging:
+    ```csharp
+    [SerializeField] private bool enableDebugLogs = true;
+    ```
+
+    Monitor pool status in console:
+    ```
+    [UserIconManager] Pool Status: 20/20, Active Icons: 18
+    ```
+
+    If `Active Icons` continuously increases, icons aren't being cleaned up.
+
+    **Solution**:
+
+    Ensure `OnPlayerLeft()` is being called:
+    ```csharp UserIconManager.cs:485-489
+    public override void OnPlayerLeft(VRCPlayerApi player)
+    {
+        RemovePlayerIcon(player.playerId.ToString());
+        DebugLog($"Player left: {player.displayName}");
+    }
+    ```
+
+    Check debug logs for "Player left" messages when players disconnect.
+
+    <Note>
+    If you don't see "Player left" messages, VRChat might not be calling the callback. This is rare but can happen with some UdonSharp versions. Consider implementing periodic cleanup as a fallback.
+    </Note>
+  </Accordion>
+
+  <Accordion title="High CPU usage even with few players">
+    **Symptoms**:
+    - CPU usage high with only 10-20 players
+    - Icons appear to update smoothly
+    - No obvious lag but fans spin up
+
+    **Cause**: Rotation updates happening too frequently
+
+    **Solution**:
+
+    Increase rotation update interval in IconFollower:
+    ```csharp
+    [SerializeField] private float rotationUpdateInterval = 0.1f;  // Up from 0.033s
+    ```
+
+    **Trade-off**: Icon rotation updates at 10 FPS instead of 30 FPS. Imperceptible for role icons.
+
+    **Performance gain**:
+    - 30 FPS rotation: 1,800 calculations/minute (per icon)
+    - 10 FPS rotation: 600 calculations/minute (per icon)
+    - **-66% CPU usage for rotations**
+  </Accordion>
+</AccordionGroup>
+
+## Icon Visibility Issues
+
+<AccordionGroup>
+  <Accordion title="Icons flickering or disappearing randomly">
+    **Symptoms**:
+    - Icons flash on and off
+    - Icons disappear when standing still
+    - Inconsistent visibility
+
+    **Causes**:
+    - Pool size too small for player count
+    - Distance threshold borderline behavior
+    - Aggressive culling settings
+
+    **Solutions**:
+
+    <Tabs>
+      <Tab title="Increase Pool Size">
+        Allow more simultaneous active icons:
+        ```csharp
+        [SerializeField] private int maxIconPool = 25;  // Up from 20
+        ```
+
+        **Diagnosis**: Enable debug logging and watch for:
+        ```
+        [UserIconManager] Icon pool is full, no more can be created
+        ```
+
+        If you see this message frequently, increase `maxIconPool`.
+      </Tab>
+
+      <Tab title="Add Distance Hysteresis">
+        Prevent rapid toggling at distance boundary.
+
+        Currently, icons toggle exactly at `maxDistance`:
+        ```csharp IconFollower.cs:129
+        bool shouldBeActive = currentDistance <= maxDistance;
+        ```
+
+        **Recommendation**: Add a margin to prevent flickering:
+        ```csharp
+        // Add hysteresis: turn on at maxDistance, turn off at maxDistance + 5
+        float turnOffDistance = maxDistance + 5f;
+        bool shouldBeActive = isWithinRange 
+            ? currentDistance <= turnOffDistance  // If already on, allow more range
+            : currentDistance <= maxDistance;     // If off, stricter threshold
+        ```
+
+        This prevents icons from toggling when players hover near the distance boundary.
+      </Tab>
+
+      <Tab title="Reduce Distance Check Frequency">
+        Less frequent checks mean more stable visibility:
+        ```csharp
+        [SerializeField] private float distanceCheckInterval = 0.75f;  // Up from 0.5s
+        ```
+
+        Icons update distance less often, reducing toggling frequency.
+      </Tab>
+    </Tabs>
+  </Accordion>
+
+  <Accordion title="Icons not showing for new players">
+    **Symptoms**:
+    - New players join but don't get icons
+    - Icons appear several seconds after join
+    - Existing players' icons work fine
+
+    **Cause**: Batching delay or pool full
+
+    **Solution**:
+
+    Check if `OnPlayerJoined()` is triggering immediate updates:
+    ```csharp UserIconManager.cs:468-473
+    public override void OnPlayerJoined(VRCPlayerApi player)
+    {
+        SendCustomEventDelayedSeconds(nameof(UpdateSinglePlayer), 2f);
+        lastJoinedPlayer = player;
+        DebugLog($"Player joined: {player.displayName}");
+    }
+    ```
+
+    **Diagnosis steps**:
+
+    1. Enable debug logging:
+       ```csharp
+       enableDebugLogs = true;
+       ```
+
+    2. Watch console when players join:
+       ```
+       [UserIconManager] Player joined: PlayerName
+       [UserIconManager] Icon assigned to PlayerName (role_name)
+       ```
+
+    3. If you see "Icon pool is full" messages:
+       - Increase `maxIconPool`
+       - Or reduce `maxDistance` to free up pool space
+
+    4. If no "Icon assigned" message appears:
+       - Player might not have a role in your JSON
+       - Check `roles.json` for their username
+  </Accordion>
+
+  <Accordion title="Icons not showing for specific players">
+    **Symptoms**:
+    - Most players get icons correctly
+    - Specific players never get icons
+    - Player has the correct role in JSON
+
+    **Causes**:
+    - Username mismatch (case sensitivity)
+    - Special characters in username
+    - Player display name changed
+
+    **Diagnosis**:
+
+    Add debug logging in `UpdatePlayerIcon()`:
+    ```csharp UserIconManager.cs:269-276
+    private void UpdatePlayerIcon(VRCPlayerApi player)
+    {
+        string playerId = player.playerId.ToString();
+        string playerName = player.displayName;
+        
+        DebugLog($"Checking player: {playerName}");  // Add this
+        
+        string roleName = null;
+        if (userRoleMap.TryGetValue(playerName, out DataToken roleToken))
+            roleName = roleToken.String;
+        
+        DebugLog($"Player {playerName} role: {roleName ?? "NONE"}");  // Add this
+    }
+    ```
+
+    **Console output**:
+    ```
+    [UserIconManager] Checking player: JohnDoe
+    [UserIconManager] Player JohnDoe role: NONE
+    ```
+
+    **Solutions**:
+
+    1. **Check exact username in JSON**:
+       ```json
+       {
+         "roles": {
+           "admin": {
+             "users": ["JohnDoe"]  // Must match EXACTLY
+           }
+         }
+       }
+       ```
+
+    2. **Case sensitivity**: VRChat usernames are case-sensitive:
+       - JSON: `"johndoe"` ❌
+       - JSON: `"JohnDoe"` ✓
+
+    3. **Special characters**: Some characters might not match:
+       - Display name: `John_Doe`
+       - VRChat API name: `JohnDoe`
+       
+       Use debug logs to see exact `displayName` value.
+  </Accordion>
+
+  <Accordion title="Icons showing at wrong distance">
+    **Symptoms**:
+    - Icons visible beyond configured `maxDistance`
+    - Or icons disappearing before reaching `maxDistance`
+    - Distance behavior inconsistent
+
+    **Cause**: Distance check delay
+
+    **Explanation**:
+
+    Distance is only checked every `distanceCheckInterval`:
+    ```csharp IconFollower.cs:80-84
+    if (Time.time >= nextDistanceCheck)
+    {
+        CheckDistanceAndToggle();
+        nextDistanceCheck = Time.time + distanceCheckInterval;
+    }
+    ```
+
+    With `distanceCheckInterval = 0.5s`, icons can persist up to 0.5s after exceeding `maxDistance`.
+
+    **Solution**:
+
+    For more responsive distance culling:
+    ```csharp
+    [SerializeField] private float distanceCheckInterval = 0.25f;  // Down from 0.5s
+    ```
+
+    **Trade-off**: More frequent distance calculations increase CPU usage:
+    - 0.5s interval: 2 checks/second
+    - 0.25s interval: 4 checks/second
+    - **+100% distance calculation cost**
+
+    <Warning>
+    Very low values (< 0.1s) can cause flickering as icons rapidly toggle at the distance boundary. Use hysteresis (see "Icons flickering" above) if you need responsive culling.
+    </Warning>
+  </Accordion>
+</AccordionGroup>
+
+## JSON and Role Issues
+
+<AccordionGroup>
+  <Accordion title="Roles not loading from JSON">
+    **Symptoms**:
+    - No icons appear for anyone
+    - Console shows "Roles loaded: 0"
+    - JSON URL is configured
+
+    **Diagnosis**:
+
+    Enable debug logging:
+    ```csharp
+    [SerializeField] private bool enableDebugLogs = true;
+    ```
+
+    Check console for error messages:
+    ```
+    [UserIconManager] Loading role data from JSON...
+    [UserIconManager] Error parsing JSON
+    ```
+    or
+    ```
+    [UserIconManager] Error loading JSON: 404 Not Found
+    ```
+
+    **Solutions**:
+
+    <Tabs>
+      <Tab title="Invalid JSON Format">
+        **Error**: `"Error parsing JSON"`
+
+        Ensure your JSON matches the expected structure:
+        ```json
+        {
+          "roles": {
+            "admin": {
+              "users": ["Player1", "Player2"],
+              "priority": 100
+            },
+            "moderator": {
+              "users": ["Player3"],
+              "priority": 50
+            }
+          }
+        }
+        ```
+
+        **Common mistakes**:
+        - Missing `"roles"` wrapper ❌
+        - Missing `"users"` array ❌
+        - Trailing commas ❌
+        - Single quotes instead of double quotes ❌
+
+        Validate your JSON at [jsonlint.com](https://jsonlint.com)
+      </Tab>
+
+      <Tab title="URL Not Accessible">
+        **Error**: `"Error loading JSON: 404 Not Found"`
+
+        1. **Check URL accessibility**:
+           - Open the URL in a web browser
+           - Must return raw JSON, not an HTML page
+           - Must be publicly accessible (no authentication)
+
+        2. **Use raw GitHub URLs**:
+           - ❌ `https://github.com/user/repo/blob/main/roles.json`
+           - ✓ `https://raw.githubusercontent.com/user/repo/main/roles.json`
+
+        3. **Verify CORS headers** (advanced):
+           VRChat requires the server to allow cross-origin requests. GitHub raw URLs work by default.
+      </Tab>
+
+      <Tab title="URL Not Set">
+        Check the VRCUrl field in Unity Inspector:
+        ```
+        UserIconManager
+        └── Roles Json Url: [must be set]
+        ```
+
+        If empty, icons won't load.
+      </Tab>
+    </Tabs>
+  </Accordion>
+
+  <Accordion title="Wrong role showing for player">
+    **Symptoms**:
+    - Player has an icon but it's the wrong role
+    - Player appears in multiple roles in JSON
+    - Expected priority not respected
+
+    **Cause**: Role priority system
+
+    **Explanation**:
+
+    When a player appears in multiple roles, the highest priority wins:
+    ```csharp UserIconManager.cs:210-222
+    for (int j = 0; j < users.Count; j++)
+    {
+        string username = users[j].String;
+        
+        if (!userRoleMap.ContainsKey(username) || 
+            priority > GetUserRolePriority(username))
+        {
+            userRoleMap[username] = roleName;  // Higher priority overwrites
+        }
+    }
+    ```
+
+    **Example**:
+    ```json
+    {
+      "roles": {
+        "admin": {
+          "users": ["JohnDoe"],
+          "priority": 100
+        },
+        "moderator": {
+          "users": ["JohnDoe"],
+          "priority": 50
+        }
+      }
+    }
+    ```
+
+    **Result**: JohnDoe gets "admin" icon (higher priority)
+
+    **Solution**:
+
+    - Remove player from lower-priority roles
+    - Or adjust priority values to match intended hierarchy
+
+    **Priority guidelines**:
+    - Owner: 1000
+    - Admin: 100
+    - Moderator: 50
+    - VIP: 10
+    - Default: 0
+  </Accordion>
+
+  <Accordion title="Role changes not updating">
+    **Symptoms**:
+    - Updated JSON on server
+    - Players still have old roles
+    - New players get correct roles
+
+    **Cause**: JSON cache not refreshed
+
+    **Explanation**:
+
+    JSON is reloaded every 5 minutes:
+    ```csharp UserIconManager.cs:41,104-108
+    private const float JSON_UPDATE_INTERVAL = 300f;  // 5 minutes
+    
+    if (currentTime >= nextJsonUpdateTime)
+    {
+        LoadRolesFromJson();
+        nextJsonUpdateTime = currentTime + JSON_UPDATE_INTERVAL;
+    }
+    ```
+
+    **Solutions**:
+
+    <Tabs>
+      <Tab title="Wait for Auto-Refresh">
+        Simplest solution: wait up to 5 minutes for automatic reload.
+
+        Icons will update on the next JSON refresh cycle.
+      </Tab>
+
+      <Tab title="Reduce Update Interval (Testing)">
+        For faster testing, reduce the interval:
+        ```csharp
+        private const float JSON_UPDATE_INTERVAL = 60f;  // 1 minute
+        ```
+
+        <Warning>
+        Don't set this too low in production. Frequent JSON downloads can:
+        - Increase server load
+        - Trigger rate limiting on GitHub
+        - Waste bandwidth
+        </Warning>
+      </Tab>
+
+      <Tab title="Force Reload (Advanced)">
+        Add a manual reload trigger for world owners:
+        ```csharp
+        public void ForceReloadRoles()
+        {
+            if (Networking.LocalPlayer.isInstanceOwner)
+            {
+                LoadRolesFromJson();
+                DebugLog("Forced role reload by instance owner");
+            }
+        }
+        ```
+
+        Call from a UI button or interact trigger.
+      </Tab>
+    </Tabs>
+  </Accordion>
+</AccordionGroup>
+
+## Debug Logging Tips
+
+Effective debugging with the built-in logging system:
+
+### Enable Debug Logs
+
+```csharp
+[SerializeField] private bool enableDebugLogs = true;
+```
+
+### Useful Log Messages
+
+<CodeGroup>
+```csharp UserIconManager Logs
+[UserIconManager] Loading role data from JSON...
+[UserIconManager] Roles loaded: 3
+[UserIconManager] Users processed: 15
+[UserIconManager] Player joined: JohnDoe
+[UserIconManager] Icon assigned to JohnDoe (admin)
+[UserIconManager] Player left: JohnDoe
+[UserIconManager] Icon pool is full, no more can be created
+```
+
+```csharp IconFollower Logs
+[IconFollower] SetupIcon -> player: JohnDoe
+[IconFollower] Initial position established in (10.5, 2.3, 5.1)
+[IconFollower] Icon activated for JohnDoe
+```
+</CodeGroup>
+
+### Add Custom Monitoring
+
+Monitor pool status periodically:
+
+```csharp
+void Update()
+{
+    // Log pool status every 300 frames (5 seconds @ 60fps)
+    if (Time.frameCount % 300 == 0 && enableDebugLogs)
+    {
+        DebugLog($"Pool: {poolSize}/{maxIconPool}, Active: {activeIcons.Count}");
+    }
+}
+```
+
+Monitor individual icon distances:
+
+```csharp IconFollower.cs
+void Update()
+{
+    if (Time.frameCount % 300 == 0)  // Every 5 seconds
+    {
+        Debug.Log($"[IconFollower] {targetPlayer?.displayName}: {currentDistance:F1}m, Active: {isWithinRange}");
+    }
+}
+```
+
+## Performance Monitoring
+
+Track system health:
+
+### VRChat Performance Overlay
+
+1. Open Quick Menu (R on keyboard, Menu button on controller)
+2. Settings → Performance → Show Performance Stats
+3. Monitor:
+   - **Frame Time**: Should stay under 16ms (60 FPS)
+   - **CPU Time**: Watch for spikes during updates
+
+### Unity Profiler (World Testing)
+
+1. Build & Test world in Unity
+2. Open Window → Analysis → Profiler
+3. Monitor:
+   - `UserIconManager.Update()`
+   - `IconFollower.Update()`
+   - GC allocations
+
+### Baseline Metrics (80 players, optimized settings)
+
+| Metric | Target | Warning | Critical |
+|--------|--------|---------|----------|
+| Frame time | < 16ms | 16-20ms | > 20ms |
+| Update() calls/sec | ~1,200 | 2,000 | > 3,000 |
+| Active icons | ≤ 20 | 20-25 | > 25 |
+| Memory (MB) | ~5 MB | 8 MB | > 10 MB |
+
+## Getting Help
+
+If you're still experiencing issues:
+
+<Steps>
+  <Step title="Gather diagnostic info">
+    - Enable debug logging
+    - Note exact symptoms and when they occur
+    - Record player count when issue happens
+    - Copy relevant console logs
+  </Step>
+
+  <Step title="Check configuration">
+    - Screenshot Unity Inspector settings
+    - Verify JSON URL and format
+    - Note your optimization parameters
+  </Step>
+
+  <Step title="Test in isolation">
+    - Create a test world with only the icon system
+    - Try with 2-3 players first
+    - Gradually increase player count
+  </Step>
+
+  <Step title="Report the issue">
+    Include in your report:
+    - VRChat SDK version
+    - UdonSharp version
+    - World player capacity
+    - Your configuration values
+    - Console logs with debug enabled
+    - Steps to reproduce
+  </Step>
+</Steps>
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Object Pooling" icon="recycle" href="/advanced/object-pooling">
+    Understand the pooling system to diagnose pool-related issues
+  </Card>
+  <Card title="Batched Updates" icon="layer-group" href="/advanced/batched-updates">
+    Learn about batching to optimize performance
+  </Card>
+  <Card title="Configuration" icon="sliders" href="/configuration/performance-tuning">
+    Review all available configuration parameters
+  </Card>
+  <Card title="Performance Tips" icon="gauge-high" href="/concepts/optimization">
+    General optimization strategies
+  </Card>
+</CardGroup>

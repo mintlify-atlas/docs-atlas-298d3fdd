@@ -1,0 +1,278 @@
+---
+title: Creating Custom Role Icons
+description: Design, optimize, and import custom role icons for your VRChat world
+---
+
+Learn how to create professional-looking role icons that perform well in VRChat.
+
+## Icon Specifications
+
+All role icons must meet these requirements:
+
+<CodeGroup>
+```text Specifications
+Dimensions: 256x256 pixels
+Format: PNG with alpha transparency
+Max File Size: 50KB
+Color Mode: RGB/RGBA
+Bit Depth: 8-bit per channel
+```
+</CodeGroup>
+
+<Warning>
+  Icons larger than 50KB can cause:
+  - Slow world load times
+  - Increased memory usage
+  - Performance issues in large instances (80+ players)
+  - Potential VRChat asset bundle limits
+</Warning>
+
+## Design Guidelines
+
+### Visual Clarity
+
+Icons appear above player heads and need to be recognizable at various distances:
+
+- **Keep it simple**: Use bold, clear shapes
+- **High contrast**: Icons should be visible against any world background
+- **Avoid tiny details**: Details under 10px may not be visible
+- **Test at scale**: View your icon at 32x32px to check readability
+
+### Transparency
+
+- Use alpha transparency for non-rectangular icons
+- Avoid semi-transparent edges (can cause rendering artifacts)
+- Keep transparency binary when possible (fully opaque or fully transparent)
+
+### Color Recommendations
+
+- Use vibrant, saturated colors for visibility
+- Add a subtle outline or shadow for depth
+- Consider colorblind-friendly palettes
+- Avoid pure white/black (use near-white/near-black instead)
+
+## Creating Icons
+
+<Steps>
+  <Step title="Design Your Icon">
+    Use any graphics editor:
+    
+    **Recommended Tools**:
+    - **Figma** (free, browser-based)
+    - **Photoshop** (professional)
+    - **GIMP** (free, open-source)
+    - **Aseprite** (pixel art)
+    
+    Create a new document:
+    - Width: 256px
+    - Height: 256px
+    - Background: Transparent
+    - Color mode: RGB
+  </Step>
+
+  <Step title="Export as PNG">
+    Export settings vary by software:
+    
+    <CodeGroup>
+    ```text Photoshop
+    File > Export > Export As...
+    Format: PNG
+    Transparency: ON
+    Interlaced: OFF
+    Compression: Smallest/Slow
+    ```
+    
+    ```text GIMP
+    File > Export As...
+    Select file type: PNG image
+    Compression level: 9
+    Save background color: OFF
+    ```
+    
+    ```text Figma
+    Select frame
+    Export > PNG
+    Scale: 1x
+    Suffix: _icon
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Optimize File Size">
+    If your PNG exceeds 50KB, use optimization tools:
+    
+    **Online Tools** (easiest):
+    - [TinyPNG](https://tinypng.com/) - Drag & drop, free
+    - [Squoosh](https://squoosh.app/) - Google's image optimizer
+    - [ImageOptim](https://imageoptim.com/) - Mac app
+    
+    **Command Line** (advanced):
+    
+    <CodeGroup>
+    ```bash pngquant
+    # Install
+    brew install pngquant  # macOS
+    apt install pngquant   # Linux
+    
+    # Optimize
+    pngquant --quality=65-80 --ext .png --force icon.png
+    ```
+    
+    ```bash optipng
+    # Install
+    brew install optipng   # macOS
+    apt install optipng    # Linux
+    
+    # Optimize
+    optipng -o7 icon.png
+    ```
+    </CodeGroup>
+    
+    <Note>
+      Optimization reduces file size by 40-70% without visible quality loss.
+    </Note>
+  </Step>
+
+  <Step title="Import to Unity">
+    1. Create folder: `Assets/RoleIcons/Sprites/`
+    2. Drag your PNG file into this folder
+    3. Select the sprite in the Project window
+    4. In Inspector, configure these settings:
+    
+    <CodeGroup>
+    ```text Unity Import Settings
+    Texture Type: Sprite (2D and UI)
+    Sprite Mode: Single
+    Pixels Per Unit: 100
+    Mesh Type: Tight
+    Max Size: 256
+    Compression: High Quality
+    Format: RGBA 32 bit
+    Read/Write Enabled: OFF ⚠️
+    Generate Mip Maps: OFF
+    ```
+    </CodeGroup>
+    
+    5. Click **Apply**
+  </Step>
+
+  <Step title="Add to Icon Prefab">
+    The sprite is now ready to be added to the UserIconManager:
+    
+    1. Find the GameObject with `UserIconManager` component
+    2. Expand the **Roles** section
+    3. Add sprite to `Role Sprites` array
+    4. Add corresponding name to `Role Names` array
+    
+    See [Adding Roles Guide](/guides/adding-roles) for detailed steps.
+  </Step>
+</Steps>
+
+## Testing Icon Visibility
+
+### In Unity Editor
+
+1. Create a test scene with varying backgrounds (dark, light, colorful)
+2. Place the icon prefab at different distances
+3. View from multiple angles
+4. Check visibility at 5m, 10m, 25m, 50m distances
+
+### In VRChat
+
+<CodeGroup>
+```text Test Checklist
+✓ Visible in bright worlds
+✓ Visible in dark worlds
+✓ Readable from 10+ meters
+✓ No flickering or Z-fighting
+✓ Rotates correctly to face camera
+✓ Appears within 2 seconds of player joining
+```
+</CodeGroup>
+
+## Common Issues
+
+### Icon Appears Blurry
+
+**Cause**: Texture compression or wrong import settings
+
+**Solution**:
+- Change Compression to "High Quality" or "None"
+- Ensure Max Size is 256 (not lower)
+- Verify format is RGBA 32 bit
+
+### Icon Has White Box Around It
+
+**Cause**: No alpha transparency or wrong blend mode
+
+**Solution**:
+- Re-export PNG with transparency enabled
+- Check Unity material uses "Sprites/Default" shader
+- Verify SpriteRenderer color alpha is 255
+
+### Icon File Too Large
+
+**Cause**: Unoptimized PNG or embedded metadata
+
+**Solution**:
+- Use TinyPNG or similar optimizer
+- Remove metadata: `exiftool -all= icon.png`
+- Reduce color palette if possible
+- Consider simpler design
+
+### Icons Don't Appear in VRChat
+
+**Cause**: Multiple possible issues
+
+**Solution**:
+1. Check Console for errors in Unity
+2. Verify sprite is assigned in `roleSprites` array
+3. Ensure role name matches JSON exactly
+4. Enable debug logs: `Enable Debug Logs` on UserIconManager
+5. Check logs: `[UserIconManager] Icon assigned to {user} ({role})`
+
+## Example Icon Set
+
+Based on the userRoles.json structure:
+
+| Role | Icon Design Suggestion | Color Palette |
+|------|------------------------|---------------|
+| leader | Crown or star | Gold (#FFD700) |
+| secretaries | Clipboard or document | Blue (#4A90E2) |
+| maids | Feather duster | Pink (#FF69B4) |
+| butlers | Bow tie | Dark blue (#2C3E50) |
+| guards | Shield | Red (#E74C3C) |
+| collaborators | Handshake or gear | Green (#2ECC71) |
+
+## Performance Considerations
+
+From `UserIconManager.cs:21-23`, the system uses pooling and batching:
+
+<Note>
+  - **Icon Pool**: Max 20 active icons (configurable)
+  - **Batched Updates**: 10 players per frame
+  - **Distance Culling**: Icons beyond 50m are disabled
+  
+  Keep icons optimized to maintain these performance benefits.
+</Note>
+
+## Reference Files
+
+Example icon from the source repository:
+
+<CodeGroup>
+```text GitHub Raw URL Pattern
+https://raw.githubusercontent.com/[username]/[repo]/main/icons/256x256.png
+
+Example:
+https://raw.githubusercontent.com/hirukoChaerin/rolesVrcMM/main/icons/256x256.png
+```
+</CodeGroup>
+
+See [JSON Configuration](/guides/json-configuration) for hosting icons remotely.
+
+## Next Steps
+
+- [Adding Roles](/guides/adding-roles) - Integrate your custom icons
+- [JSON Configuration](/guides/json-configuration) - Set up remote icon loading
+- [Scaling for Large Worlds](/guides/scaling-for-large-worlds) - Optimize performance

@@ -1,0 +1,329 @@
+---
+title: 'UserIconManager Configuration'
+description: 'Configure the main icon management system and role assignments'
+icon: 'users-gear'
+---
+
+The `UserIconManager` is the central component that manages all role icons in your VRChat world. It handles JSON loading, role-to-sprite mapping, icon pooling, and player tracking.
+
+## Unity Setup
+
+### Adding the Component
+
+1. Create an empty GameObject in your scene (e.g., `RoleIconSystem`)
+2. Add the `UserIconManager` script to it
+3. Configure the parameters in the Inspector
+
+### Required References
+
+<Steps>
+  <Step title="Create Icon Prefab">
+    Create a prefab with the IconFollower component and a SpriteRenderer child.
+  </Step>
+  
+  <Step title="Assign Icon Prefab">
+    Drag the prefab to the `Icon Prefab` field in UserIconManager.
+  </Step>
+  
+  <Step title="Import Role Sprites">
+    Import your role icon images as Sprites in Unity.
+  </Step>
+  
+  <Step title="Configure Role Arrays">
+    Set up the `roleSprites` and `roleNames` arrays to match (see below).
+  </Step>
+</Steps>
+
+## Configuration Parameters
+
+### Core Settings
+
+<ParamField path="rolesJsonUrl" type="VRCUrl">
+  URL to the remote JSON file containing user-to-role assignments. Can be a VRChat-compatible URL (Pastebin, GitHub raw, etc.).
+  
+  **Example**: `https://pastebin.com/raw/abc123`
+  
+  The JSON is automatically reloaded every 5 minutes to pick up changes.
+</ParamField>
+
+<ParamField path="iconPrefab" type="GameObject" required>
+  The prefab that contains the IconFollower component. This prefab is instantiated and pooled for each player icon.
+  
+  **Requirements**:
+  - Must have `IconFollower` component
+  - Must have `SpriteRenderer` in children
+</ParamField>
+
+<ParamField path="updateInterval" type="float" default="60">
+  Time interval (in seconds) between full icon system updates.
+  
+  Individual player joins/leaves are handled immediately. This interval is for periodic cleanup and validation.
+  
+  **Default**: `60` seconds
+</ParamField>
+
+### Role Mapping
+
+<ParamField path="roleSprites" type="Sprite[]" required>
+  Array of Sprite assets, one for each role type.
+  
+  **Must match the order of `roleNames` array**.
+</ParamField>
+
+<ParamField path="roleNames" type="string[]" required>
+  Array of role name strings that match the roles defined in your JSON.
+  
+  **Example**:
+  ```yaml
+  roleNames[0] = "owner"
+  roleNames[1] = "moderator"
+  roleNames[2] = "builder"
+  roleNames[3] = "vip"
+  ```
+  
+  These names must **exactly match** the role keys in your userRoles.json.
+</ParamField>
+
+<Warning>
+  The `roleSprites` and `roleNames` arrays must have the same length and corresponding indices.
+  
+  ```csharp
+  // From UserIconManager.cs:405-413
+  private Sprite GetRoleSprite(string roleName)
+  {
+      for (int i = 0; i < roleNames.Length && i < roleSprites.Length; i++)
+      {
+          if (roleNames[i] == roleName && roleSprites[i] != null)
+              return roleSprites[i];
+      }
+      return null;
+  }
+  ```
+</Warning>
+
+### Setting Up Role Arrays in Unity
+
+<Steps>
+  <Step title="Set Array Size">
+    In the Inspector, set the size of both `Role Sprites` and `Role Names` to match your number of roles (e.g., 4).
+  </Step>
+  
+  <Step title="Assign Sprites">
+    Drag each role sprite into the corresponding element:
+    - Element 0: Owner sprite
+    - Element 1: Moderator sprite
+    - Element 2: Builder sprite
+    - Element 3: VIP sprite
+  </Step>
+  
+  <Step title="Enter Role Names">
+    Type the exact role names from your JSON:
+    - Element 0: `owner`
+    - Element 1: `moderator`
+    - Element 2: `builder`
+    - Element 3: `vip`
+  </Step>
+  
+  <Step title="Verify Mapping">
+    Double-check that each sprite matches its corresponding role name at the same index.
+  </Step>
+</Steps>
+
+## Optimization Settings
+
+<ParamField path="maxIconPool" type="int" default="20">
+  Maximum number of icon GameObjects that can be active simultaneously.
+  
+  Uses object pooling to reuse icons instead of creating/destroying them. Icons are assigned to the closest or highest-priority players.
+  
+  **Trade-off**: Lower values save memory but may cause distant players to not show icons.
+</ParamField>
+
+<ParamField path="useBatchedUpdates" type="bool" default="true">
+  When enabled, player icons are updated in batches over multiple frames instead of all at once.
+  
+  **Performance impact**: Distributes CPU load, preventing frame spikes with many players.
+  
+  **Recommended**: Always `true` for worlds with 20+ players
+</ParamField>
+
+<ParamField path="playersPerBatch" type="int" default="10">
+  Number of players to process per batch when `useBatchedUpdates` is enabled.
+  
+  Lower values = smoother framerate but slower full updates  
+  Higher values = faster updates but potential frame spikes
+  
+  **Recommended values**:
+  - Casual worlds: `10`
+  - Crowded worlds: `15`
+  - Massive worlds: `20`
+</ParamField>
+
+## Debug Settings
+
+<ParamField path="enableDebugLogs" type="bool" default="false">
+  Enables detailed console logging for debugging role assignments and icon creation.
+  
+  **Logs include**:
+  - JSON loading success/failure
+  - Player join/leave events
+  - Role assignments
+  - Icon pool status
+  
+  **Recommended**: Enable only when troubleshooting, disable for production.
+</ParamField>
+
+## How It Works
+
+### Icon Pooling System
+
+The UserIconManager uses object pooling to efficiently manage icons:
+
+```csharp
+// From UserIconManager.cs:305-350
+private void CreateOrReuseIcon(VRCPlayerApi player, string roleName)
+{
+    Sprite roleSprite = GetRoleSprite(roleName);
+    GameObject icon = GetIconFromPool();
+    
+    if (icon == null)
+    {
+        if (poolSize < maxIconPool)
+            icon = CreateNewIcon();
+        else
+            return; // Pool is full
+    }
+    
+    IconFollower follower = icon.GetComponent<IconFollower>();
+    follower.SetupIcon(player, roleSprite);
+    icon.SetActive(true);
+    
+    activeIcons[player.playerId.ToString()] = icon;
+}
+```
+
+### Batched Updates
+
+When enabled, the system processes players in chunks:
+
+```csharp
+// From UserIconManager.cs:112-150
+private void UpdatePlayerIconsBatched()
+{
+    int startIndex = currentBatchIndex;
+    int endIndex = Mathf.Min(currentBatchIndex + playersPerBatch, playerCount);
+    
+    for (int i = startIndex; i < endIndex; i++)
+    {
+        if (playerCache[i] != null && playerCache[i].IsValid())
+            UpdatePlayerIcon(playerCache[i]);
+    }
+    
+    currentBatchIndex += playersPerBatch;
+    if (currentBatchIndex >= playerCount)
+    {
+        currentBatchIndex = 0;
+        CleanupUnusedIcons();
+    }
+}
+```
+
+### JSON Auto-Reload
+
+The system automatically reloads the JSON every 5 minutes:
+
+```csharp
+// From UserIconManager.cs:104-108
+if (currentTime >= nextJsonUpdateTime)
+{
+    LoadRolesFromJson();
+    nextJsonUpdateTime = currentTime + JSON_UPDATE_INTERVAL; // 300 seconds
+}
+```
+
+## Events
+
+The UserIconManager automatically handles VRChat player events:
+
+### OnPlayerJoined
+
+```csharp
+public override void OnPlayerJoined(VRCPlayerApi player)
+```
+
+Automatically assigns an icon to new players after a 2-second delay.
+
+### OnPlayerLeft
+
+```csharp
+public override void OnPlayerLeft(VRCPlayerApi player)
+```
+
+Returns the player's icon to the pool for reuse.
+
+## Recommended Configurations
+
+<CardGroup cols={3}>
+  <Card title="Casual (20-40 players)" icon="users">
+    ```yaml
+    maxIconPool: 15
+    useBatchedUpdates: true
+    playersPerBatch: 10
+    updateInterval: 60
+    ```
+  </Card>
+  
+  <Card title="Crowded (40-60 players)" icon="user-group">
+    ```yaml
+    maxIconPool: 20
+    useBatchedUpdates: true
+    playersPerBatch: 15
+    updateInterval: 60
+    ```
+  </Card>
+  
+  <Card title="Massive (60-80 players)" icon="building">
+    ```yaml
+    maxIconPool: 20
+    useBatchedUpdates: true
+    playersPerBatch: 20
+    updateInterval: 90
+    ```
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Icons not appearing for any players">
+    **Check**:
+    1. Is `iconPrefab` assigned?
+    2. Are `roleSprites` and `roleNames` arrays filled?
+    3. Is the JSON URL correct and accessible?
+    4. Enable `enableDebugLogs` to see what's happening
+  </Accordion>
+
+  <Accordion title="Some players missing icons">
+    **Cause**: Icon pool is full
+    
+    **Solution**: Increase `maxIconPool` from 20 to 30-40, or reduce `maxDistance` in IconFollower to free up pool slots.
+  </Accordion>
+
+  <Accordion title="Wrong icon showing for a player">
+    **Cause**: Role name mismatch between JSON and Unity arrays
+    
+    **Solution**: Verify that role names in `roleNames` array exactly match the keys in your JSON (case-sensitive).
+  </Accordion>
+
+  <Accordion title="Performance issues with many players">
+    **Solutions**:
+    1. Enable `useBatchedUpdates`
+    2. Increase `playersPerBatch` to 15-20
+    3. Reduce `maxIconPool`
+    4. Increase `distanceCheckInterval` in IconFollower
+  </Accordion>
+</AccordionGroup>
+
+<Info>
+  The UserIconManager works in tandem with IconFollower components. Make sure to configure both for optimal performance.
+</Info>

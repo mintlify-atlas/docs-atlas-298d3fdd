@@ -1,0 +1,407 @@
+---
+title: 'Role Setup'
+description: 'Configure roles, priorities, and user assignments'
+icon: 'shield-halved'
+---
+
+This guide covers how to set up your role system, define role priorities, and assign users to roles using the JSON configuration file.
+
+## JSON Structure
+
+The VRChat Role Icons system uses a JSON file to define roles and assign users. This file is loaded remotely via VRCUrl.
+
+### Complete Example
+
+```json
+{
+  "roles": {
+    "owner": {
+      "priority": 100,
+      "users": [
+        "PlayerOne",
+        "PlayerTwo"
+      ]
+    },
+    "moderator": {
+      "priority": 80,
+      "users": [
+        "ModPlayer1",
+        "ModPlayer2",
+        "ModPlayer3"
+      ]
+    },
+    "builder": {
+      "priority": 60,
+      "users": [
+        "BuilderA",
+        "BuilderB"
+      ]
+    },
+    "vip": {
+      "priority": 40,
+      "users": [
+        "VIPMember1",
+        "VIPMember2",
+        "VIPMember3",
+        "VIPMember4"
+      ]
+    }
+  }
+}
+```
+
+## Role Configuration
+
+### Role Object Structure
+
+Each role in the JSON has the following structure:
+
+<ParamField path="roles.{roleName}" type="object">
+  A role definition object with priority and user list.
+  
+  **Properties**:
+  - `priority` (number): Role priority value (higher = more important)
+  - `users` (string[]): Array of VRChat display names
+</ParamField>
+
+<ParamField path="roles.{roleName}.priority" type="number" required>
+  Priority value for this role. When a user has multiple roles assigned, the one with the highest priority is displayed.
+  
+  **Recommended range**: 0-100
+  
+  **Example hierarchy**:
+  - Owner: `100`
+  - Admin: `90`
+  - Moderator: `80`
+  - Builder: `60`
+  - VIP: `40`
+  - Helper: `20`
+</ParamField>
+
+<ParamField path="roles.{roleName}.users" type="string[]" required>
+  Array of VRChat display names (usernames) that have this role.
+  
+  **Important**: Names are **case-sensitive** and must match exactly.
+</ParamField>
+
+## Role Priority System
+
+The priority system determines which icon is shown when a user appears in multiple role lists.
+
+### How Priorities Work
+
+```csharp
+// From UserIconManager.cs:210-222
+for (int j = 0; j < users.Count; j++)
+{
+    string username = users[j].String;
+    
+    if (!userRoleMap.ContainsKey(username) || 
+        priority > GetUserRolePriority(username))
+    {
+        userRoleMap[username] = roleName;
+    }
+}
+```
+
+<Steps>
+  <Step title="System loads all roles">
+    The JSON is parsed and all roles are loaded into memory.
+  </Step>
+  
+  <Step title="Users are mapped to roles">
+    For each role, the system iterates through the user list.
+  </Step>
+  
+  <Step title="Priorities are compared">
+    If a user appears in multiple roles, only the **highest priority** role is assigned.
+  </Step>
+  
+  <Step title="Icon is displayed">
+    The sprite corresponding to the user's highest-priority role is shown.
+  </Step>
+</Steps>
+
+### Example Priority Resolution
+
+```json
+{
+  "roles": {
+    "owner": {
+      "priority": 100,
+      "users": ["Alice"]
+    },
+    "moderator": {
+      "priority": 80,
+      "users": ["Alice", "Bob"]
+    },
+    "vip": {
+      "priority": 40,
+      "users": ["Alice", "Bob", "Charlie"]
+    }
+  }
+}
+```
+
+**Result**:
+- **Alice**: Shows `owner` icon (priority 100)
+- **Bob**: Shows `moderator` icon (priority 80)
+- **Charlie**: Shows `vip` icon (priority 40)
+
+## User Assignment
+
+### Adding Users to Roles
+
+Users are assigned by their **VRChat display name** in the `users` array:
+
+```json
+"moderator": {
+  "priority": 80,
+  "users": [
+    "ExactDisplayName1",
+    "ExactDisplayName2"
+  ]
+}
+```
+
+<Warning>
+  **Display names are case-sensitive!**
+  
+  - `PlayerOne` ✅
+  - `playerone` ❌
+  - `PLAYERONE` ❌
+  
+  Make sure to use the exact display name as shown in VRChat.
+</Warning>
+
+### Multiple Users
+
+You can assign as many users as needed to each role:
+
+```json
+"vip": {
+  "priority": 40,
+  "users": [
+    "User1",
+    "User2",
+    "User3",
+    "User4",
+    "User5"
+    // ... add as many as needed
+  ]
+}
+```
+
+### Removing Users
+
+To remove a user's role, simply delete their name from the `users` array:
+
+```json
+// Before
+"users": ["Alice", "Bob", "Charlie"]
+
+// After (removed Bob)
+"users": ["Alice", "Charlie"]
+```
+
+## Remote JSON Loading
+
+The JSON file must be hosted at a URL accessible by VRChat.
+
+### Compatible Hosting Options
+
+<CardGroup cols={2}>
+  <Card title="Pastebin" icon="paste">
+    **URL format**: `https://pastebin.com/raw/YOUR_PASTE_ID`
+    
+    **Pros**: Easy to use, free, quick updates  
+    **Cons**: Public pastes are visible to anyone
+    
+    <Tip>Use "Unlisted" pastes for semi-privacy</Tip>
+  </Card>
+  
+  <Card title="GitHub Raw" icon="github">
+    **URL format**: `https://raw.githubusercontent.com/user/repo/branch/file.json`
+    
+    **Pros**: Version control, can be private  
+    **Cons**: Changes may take a few minutes to propagate due to caching
+  </Card>
+  
+  <Card title="GitHub Gist" icon="file-code">
+    **URL format**: `https://gist.githubusercontent.com/user/ID/raw/file.json`
+    
+    **Pros**: Simple, supports versioning  
+    **Cons**: Similar caching to GitHub
+  </Card>
+  
+  <Card title="Your Own Server" icon="server">
+    **URL format**: `https://yourdomain.com/userRoles.json`
+    
+    **Pros**: Full control, instant updates  
+    **Cons**: Requires web hosting, must support HTTPS and CORS
+  </Card>
+</CardGroup>
+
+### Setting the URL in Unity
+
+<Steps>
+  <Step title="Select UserIconManager">
+    Find the GameObject with the UserIconManager component.
+  </Step>
+  
+  <Step title="Set Roles Json Url">
+    In the Inspector, find the `Roles Json Url` field.
+  </Step>
+  
+  <Step title="Enter URL">
+    Paste your JSON URL (e.g., `https://pastebin.com/raw/abc123`).
+  </Step>
+  
+  <Step title="Test in Play Mode">
+    Enable `Enable Debug Logs` to see if the JSON loads successfully.
+  </Step>
+</Steps>
+
+### Auto-Reload Behavior
+
+```csharp
+// From UserIconManager.cs:104-108
+if (currentTime >= nextJsonUpdateTime)
+{
+    LoadRolesFromJson();
+    nextJsonUpdateTime = currentTime + JSON_UPDATE_INTERVAL; // 300 seconds
+}
+```
+
+The system automatically reloads the JSON every **5 minutes** (300 seconds). This means:
+
+- ✅ You can update roles without restarting the world
+- ✅ New users get icons within 5 minutes of being added
+- ✅ Removed users lose icons within 5 minutes
+- ⚠️ Changes are not instant - there's up to a 5-minute delay
+
+## Creating Your First Role Setup
+
+<Steps>
+  <Step title="Define your role hierarchy">
+    Decide on role names and priorities:
+    
+    ```yaml
+    owner: 100
+    moderator: 80
+    vip: 40
+    ```
+  </Step>
+  
+  <Step title="Create the JSON structure">
+    ```json
+    {
+      "roles": {}
+    }
+    ```
+  </Step>
+  
+  <Step title="Add each role">
+    ```json
+    {
+      "roles": {
+        "owner": {
+          "priority": 100,
+          "users": []
+        }
+      }
+    }
+    ```
+  </Step>
+  
+  <Step title="Populate user lists">
+    ```json
+    {
+      "roles": {
+        "owner": {
+          "priority": 100,
+          "users": ["YourVRChatName"]
+        }
+      }
+    }
+    ```
+  </Step>
+  
+  <Step title="Upload to hosting service">
+    Copy the JSON to Pastebin, GitHub, or your server.
+  </Step>
+  
+  <Step title="Configure Unity">
+    Paste the URL into the `Roles Json Url` field.
+  </Step>
+  
+  <Step title="Match role names in Unity">
+    Ensure the `roleNames` array in UserIconManager matches your JSON keys exactly.
+  </Step>
+</Steps>
+
+## Advanced Configuration
+
+### Dynamic Role Updates
+
+Since the JSON reloads every 5 minutes, you can:
+
+- Add/remove users without world restart
+- Change role priorities on the fly
+- Add new roles (requires Unity update for sprites)
+
+### Role Name Validation
+
+The system validates role names against your Unity configuration:
+
+```csharp
+// From UserIconManager.cs:405-413
+private Sprite GetRoleSprite(string roleName)
+{
+    for (int i = 0; i < roleNames.Length && i < roleSprites.Length; i++)
+    {
+        if (roleNames[i] == roleName && roleSprites[i] != null)
+            return roleSprites[i];
+    }
+    return null; // Role not found in Unity config
+}
+```
+
+If a role exists in JSON but not in the Unity `roleNames` array, it will be ignored.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="JSON not loading">
+    **Check**:
+    1. Is the URL publicly accessible?
+    2. Does it use HTTPS (not HTTP)?
+    3. Is the JSON valid? Use [JSONLint](https://jsonlint.com/) to validate
+    4. Enable `enableDebugLogs` in UserIconManager to see error messages
+  </Accordion>
+
+  <Accordion title="User not getting their icon">
+    **Check**:
+    1. Is the display name spelled exactly right (case-sensitive)?
+    2. Is the role name in JSON matching the Unity `roleNames` array?
+    3. Does the user have a role with higher priority elsewhere?
+    4. Wait up to 5 minutes for the JSON to reload
+  </Accordion>
+
+  <Accordion title="Wrong icon showing for user">
+    **Check**:
+    1. Does the user appear in multiple role lists?
+    2. Is the priority system working as expected?
+    3. Do the `roleSprites` array indices match the `roleNames` array?
+  </Accordion>
+
+  <Accordion title="Changes not applying">
+    **Wait**: The JSON reloads every 5 minutes. Your changes will appear in the next reload cycle.
+    
+    **Force reload**: You can trigger an immediate reload by calling `LoadRolesFromJson()` via Udon if needed.
+  </Accordion>
+</AccordionGroup>
+
+<Info>
+  The role system is designed to be flexible and update-able without world restarts. Plan your hierarchy carefully and use descriptive role names.
+</Info>

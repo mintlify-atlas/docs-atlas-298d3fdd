@@ -1,0 +1,410 @@
+---
+title: JSON Configuration Guide
+description: Configure remote role assignments using JSON and VRCUrl
+---
+
+The Role Icons system supports remote JSON configuration, allowing you to update role assignments without republishing your world.
+
+## Complete JSON Schema
+
+Based on `userRoles.json` and `UserIconManager.cs:161-181`:
+
+<CodeGroup>
+```json Full Example
+{
+  "version": "1.0.0",
+  "lastUpdated": "2026-03-03T12:00:00Z",
+  "roles": {
+    "leader": {
+      "priority": 100,
+      "users": [
+        "BlauThemce"
+      ]
+    },
+    "secretaries": {
+      "priority": 90,
+      "users": [
+        "SerlesThemce",
+        "Mαятιи_MxVr"
+      ]
+    },
+    "maids": {
+      "priority": 80,
+      "users": [
+        "Hana Rose",
+        "XMascaritaX",
+        "Lanita_UwUr"
+      ]
+    },
+    "guards": {
+      "priority": 70,
+      "users": [
+        "Ozma猫",
+        "ㄚ ㄖ 尺 ㄩ - 暗い"
+      ]
+    }
+  }
+}
+```
+
+```json Minimal Example
+{
+  "version": "1.0.0",
+  "lastUpdated": "2026-03-03T12:00:00Z",
+  "roles": {
+    "admin": {
+      "priority": 100,
+      "users": ["YourUsername"]
+    }
+  }
+}
+```
+</CodeGroup>
+
+## Field Reference
+
+### Root Object
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `version` | string | Yes | Schema version for future compatibility |
+| `lastUpdated` | string | No | ISO 8601 timestamp of last update |
+| `roles` | object | Yes | Dictionary of role definitions |
+
+### Role Object
+
+Each key in `roles` corresponds to a role name that must match the `roleNames` array in Unity.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `priority` | number | Yes | Integer 0-100. Higher = takes precedence |
+| `users` | array | Yes | List of VRChat display names |
+
+<Note>
+  From `UserIconManager.cs:216-220`: When a user appears in multiple roles, the role with the highest priority is displayed.
+</Note>
+
+## Setting Up VRCUrl
+
+### In Unity
+
+<Steps>
+  <Step title="Assign JSON URL">
+    1. Select the GameObject with `UserIconManager` component
+    2. In Inspector, find **Configuration** section
+    3. Locate the `Roles Json Url` field
+    4. Click the circle icon to create a new VRCUrl
+    5. Enter your JSON file URL
+    
+    <CodeGroup>
+    ```text Example URLs
+    # GitHub Raw
+    https://raw.githubusercontent.com/username/repo/main/userRoles.json
+    
+    # GitHub Gist
+    https://gist.githubusercontent.com/username/gist-id/raw/userRoles.json
+    
+    # Pastebin Raw
+    https://pastebin.com/raw/paste-id
+    
+    # Self-hosted
+    https://yourdomain.com/vrchat/userRoles.json
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Configure Update Interval">
+    By default, JSON is reloaded every **300 seconds** (5 minutes).
+    
+    From `UserIconManager.cs:41`:
+    ```csharp
+    private const float JSON_UPDATE_INTERVAL = 300f;
+    ```
+    
+    This is hardcoded to prevent excessive API calls. For custom intervals, modify the source code.
+  </Step>
+</Steps>
+
+### GitHub Setup (Recommended)
+
+GitHub provides free, reliable hosting for JSON files:
+
+<Steps>
+  <Step title="Create Repository">
+    1. Go to [GitHub](https://github.com) and create a new repository
+    2. Name it something like `vrchat-roles`
+    3. Make it **Public** (required for VRChat to access)
+    4. Add a `userRoles.json` file
+  </Step>
+
+  <Step title="Get Raw URL">
+    1. Navigate to your `userRoles.json` file on GitHub
+    2. Click the **Raw** button
+    3. Copy the URL from your browser
+    
+    The URL format is:
+    ```text
+    https://raw.githubusercontent.com/[username]/[repo]/[branch]/userRoles.json
+    ```
+    
+    <Warning>
+      Use the **raw.githubusercontent.com** domain, not **github.com**. VRChat cannot parse GitHub's HTML pages.
+    </Warning>
+  </Step>
+
+  <Step title="Update Without Republishing">
+    To update roles:
+    1. Edit `userRoles.json` on GitHub
+    2. Commit changes
+    3. Wait up to 5 minutes (JSON_UPDATE_INTERVAL)
+    4. Changes appear automatically in VRChat
+    
+    <Note>
+      Users already in the world will see updates within 5 minutes. New joiners see updates immediately.
+    </Note>
+  </Step>
+</Steps>
+
+## Username Handling
+
+From `UserIconManager.cs:272-276`, the system matches usernames exactly:
+
+```csharp
+string playerName = player.displayName;
+
+string roleName = null;
+if (userRoleMap.TryGetValue(playerName, out DataToken roleToken))
+    roleName = roleToken.String;
+```
+
+### Important Notes
+
+- **Case-sensitive**: "Player" ≠ "player"
+- **Special characters**: Unicode characters are supported (猫, チャエリン, etc.)
+- **Exact match required**: Extra spaces will break matching
+- **Display names**: Use the VRChat display name, NOT the username
+
+<CodeGroup>
+```json Correct
+{
+  "roles": {
+    "admin": {
+      "priority": 100,
+      "users": [
+        "BlauThemce",
+        "Mαятιи_MxVr",
+        "Ozma猫"
+      ]
+    }
+  }
+}
+```
+
+```json Incorrect
+{
+  "roles": {
+    "admin": {
+      "priority": 100,
+      "users": [
+        "blauthemce",          // Wrong: case mismatch
+        "Martin_MxVr",          // Wrong: wrong characters
+        " Ozma猫 "              // Wrong: extra spaces
+      ]
+    }
+  }
+}
+```
+</CodeGroup>
+
+## Priority System
+
+Priority determines which icon appears when a user has multiple roles.
+
+From `UserIconManager.cs:214-221`:
+
+```csharp
+if (!userRoleMap.ContainsKey(username) || 
+    priority > GetUserRolePriority(username))
+{
+    userRoleMap[username] = roleName;
+}
+```
+
+### Priority Examples
+
+<CodeGroup>
+```json Example: User with Multiple Roles
+{
+  "roles": {
+    "owner": {
+      "priority": 100,
+      "users": ["Alice"]
+    },
+    "moderator": {
+      "priority": 80,
+      "users": ["Alice", "Bob"]
+    },
+    "member": {
+      "priority": 50,
+      "users": ["Alice", "Bob", "Charlie"]
+    }
+  }
+}
+
+// Result:
+// Alice → Shows "owner" icon (priority 100)
+// Bob → Shows "moderator" icon (priority 80)
+// Charlie → Shows "member" icon (priority 50)
+```
+</CodeGroup>
+
+### Recommended Priority Ranges
+
+| Range | Role Type | Examples |
+|-------|-----------|----------|
+| 100 | World Owner | owner, leader |
+| 90-99 | Administrators | admin, secretary |
+| 80-89 | Senior Staff | senior_mod, head_maid |
+| 70-79 | Staff | moderator, guard |
+| 60-69 | Contributors | helper, collaborator |
+| 50-59 | Members | regular, member |
+| 40-49 | VIP | vip, supporter |
+| 1-39 | Other | guest, visitor |
+
+## JSON Validation
+
+### Validation Code
+
+From `UserIconManager.cs:161-167`:
+
+```csharp
+if (!VRCJson.TryDeserializeFromJson(result.Result, out DataToken jsonResult))
+{
+    DebugLog("Error parsing JSON");
+    return;
+}
+
+if (jsonResult.TokenType != TokenType.DataDictionary)
+    return;
+```
+
+### Common Validation Errors
+
+<Warning>
+  **Syntax Errors** will cause the entire JSON to fail silently:
+  - Missing commas
+  - Trailing commas in arrays
+  - Unquoted keys
+  - Single quotes instead of double quotes
+  - Missing closing brackets
+</Warning>
+
+### Validate Before Uploading
+
+Use these tools to catch errors:
+
+- [JSONLint](https://jsonlint.com/) - Online validator
+- [JSON Formatter](https://jsonformatter.curiousconcept.com/) - Format and validate
+- VS Code with JSON extension - Real-time validation
+
+<CodeGroup>
+```bash Command Line Validation
+# Using Python
+python -m json.tool userRoles.json
+
+# Using jq
+jq . userRoles.json
+
+# Both will output formatted JSON if valid,
+# or show error message if invalid
+```
+</CodeGroup>
+
+## Error Handling
+
+From `UserIconManager.cs:183-186`, errors are logged:
+
+```csharp
+public override void OnStringLoadError(IVRCStringDownload result)
+{
+    DebugLog($"Error loading JSON: {result.Error}");
+}
+```
+
+### Troubleshooting
+
+| Issue | Possible Cause | Solution |
+|-------|----------------|----------|
+| "Error loading JSON" | Invalid URL | Check URL is accessible in browser |
+| "Error parsing JSON" | Syntax error | Validate JSON with JSONLint |
+| Roles not updating | Cache delay | Wait 5 minutes for next update |
+| Icons not showing | Username mismatch | Verify exact display name spelling |
+| Wrong icon appears | Priority conflict | Check priority values |
+
+### Enable Debug Logs
+
+1. Select UserIconManager GameObject
+2. Check **Enable Debug Logs** in Inspector
+3. Enter Play Mode or join world
+4. Check Console/logs for:
+   - `[UserIconManager] Loading role data from JSON...`
+   - `[UserIconManager] Roles loaded: X`
+   - `[UserIconManager] Users processed: X`
+   - `[UserIconManager] Icon assigned to {user} ({role})`
+
+## Update Timing
+
+The system performs two types of updates:
+
+### JSON Reload
+
+From `UserIconManager.cs:104-108`:
+
+```csharp
+if (currentTime >= nextJsonUpdateTime)
+{
+    LoadRolesFromJson();
+    nextJsonUpdateTime = currentTime + JSON_UPDATE_INTERVAL;
+}
+```
+
+- **Frequency**: Every 300 seconds (5 minutes)
+- **Purpose**: Fetch latest JSON from URL
+- **Impact**: Low - only network request
+
+### Icon Updates
+
+From `UserIconManager.cs:14` and `UserIconManager.cs:89-101`:
+
+```csharp
+[SerializeField] private float updateInterval = 60f;
+```
+
+- **Frequency**: Every 60 seconds (configurable in Unity)
+- **Purpose**: Update player icons based on current data
+- **Impact**: Medium - processes all players
+
+<Note>
+  In batched mode (enabled by default), only 10 players are processed per frame to maintain performance.
+</Note>
+
+## CORS and Security
+
+VRChat's `VRCStringDownloader` has some limitations:
+
+- ✅ **Works**: GitHub, Pastebin, most static file hosts
+- ❌ **May fail**: Sites requiring authentication, dynamic URLs
+- ⚠️ **Untested**: Self-hosted servers (depends on CORS headers)
+
+If using a self-hosted server, ensure these headers:
+
+```text
+Access-Control-Allow-Origin: *
+Content-Type: application/json
+```
+
+## Next Steps
+
+- [Adding Roles](/guides/adding-roles) - Set up roles in Unity
+- [Custom Icons](/guides/custom-icons) - Design role icons
+- [Scaling for Large Worlds](/guides/scaling-for-large-worlds) - Optimize for performance

@@ -1,80 +1,231 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get VRChat Role Icons working in your world in under 5 minutes
 ---
 
-## Get started in three steps
+## Prerequisites
 
-Get your documentation site running locally and make your first customization.
+Before starting, ensure you have:
 
-### Step 1: Set up your local environment
+- Unity 2022.3.6f1 or compatible version
+- VRChat SDK3 - Worlds (latest version)
+- UdonSharp 1.x installed in your project
+- Basic familiarity with Unity Inspector
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+<Note>
+  If you haven't installed the required dependencies yet, check the [Installation](/installation) guide for detailed setup instructions.
+</Note>
+
+## Setup in 5 minutes
+
+<Steps>
+  <Step title="Import the scripts">
+    Copy `IconFollower.cs` and `UserIconManager.cs` into your project's `Assets/` folder. UdonSharp will automatically compile them.
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+    Verify compilation by checking for any errors in the Unity Console. You should see no red errors if UdonSharp is properly installed.
+  </Step>
+  
+  <Step title="Create the icon prefab">
+    Create a new GameObject in your scene and name it `RoleIconPrefab`:
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+    1. Right-click in Hierarchy → Create Empty
+    2. Add a **Sprite Renderer** component
+    3. Add the **IconFollower** UdonSharp behavior
+    4. In IconFollower, assign the Sprite Renderer to the **Icon Sprite Renderer** field
+    5. Drag the GameObject from Hierarchy into your Project folder to create a prefab
+    6. Delete the original from the scene
     
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    <Tip>
+      Leave the Sprite Renderer's sprite field empty in the prefab. The UserIconManager will assign sprites dynamically at runtime.
+    </Tip>
+  </Step>
+  
+  <Step title="Create the manager GameObject">
+    Create a new GameObject in your scene named `RoleIconManager`:
+    
+    1. Right-click in Hierarchy → Create Empty
+    2. Add the **UserIconManager** UdonSharp behavior
+    3. Configure the required fields in the Inspector
+  </Step>
+  
+  <Step title="Prepare your role sprites">
+    Import your role icon sprites into Unity:
+    
+    - **Format**: PNG with transparency
+    - **Size**: 256×256 pixels recommended
+    - **File size**: Under 50KB each for best performance
+    
+    Set the texture import settings:
+    
+    ```
+    Texture Type: Sprite (2D and UI)
+    Sprite Mode: Single
+    Max Size: 256 or 512
+    Compression: High Quality
+    ```
+  </Step>
+  
+  <Step title="Configure the UserIconManager">
+    Select the RoleIconManager GameObject and configure these Inspector fields:
+    
+    **Configuration section:**
+    - **Roles Json Url**: URL to your roles JSON file (e.g., GitHub raw URL, Pastebin raw URL)
+    - **Icon Prefab**: Drag your RoleIconPrefab here
+    - **Update Interval**: `60` (seconds between icon updates)
+    
+    **Roles section:**
+    - **Role Sprites**: Set size to match your number of roles, drag sprites into array slots
+    - **Role Names**: Set size to match sprites, enter exact role names from your JSON
+    
+    <Warning>
+      Role names must match exactly (case-sensitive) with the keys in your JSON file. Mismatches will prevent icons from appearing.
+    </Warning>
+    
+    **Optimization section** (use defaults for now):
+    - **Max Icon Pool**: `20`
+    - **Use Batched Updates**: ✓ (checked)
+    - **Players Per Batch**: `10`
+  </Step>
+  
+  <Step title="Create your roles JSON file">
+    Create a JSON file with this structure and host it online:
+    
+    ```json
+    {
+      "version": "1.0.0",
+      "lastUpdated": "2026-03-03T12:00:00Z",
+      "roles": {
+        "admin": {
+          "priority": 100,
+          "users": [
+            "YourVRChatUsername",
+            "AnotherUsername"
+          ]
+        },
+        "moderator": {
+          "priority": 90,
+          "users": [
+            "ModUsername1",
+            "ModUsername2"
+          ]
+        },
+        "vip": {
+          "priority": 50,
+          "users": [
+            "VipUser1"
+          ]
+        }
+      }
+    }
+    ```
+    
+    Host this file on:
+    - **GitHub**: Create a repository, upload the file, and use the "Raw" URL
+    - **Pastebin**: Create a paste and use the "raw" link
+    - **Your own web server**: Any publicly accessible HTTPS URL
+    
+    <Note>
+      The system fetches the JSON on world start and automatically refreshes it every 5 minutes. Changes take effect without requiring players to rejoin.
+    </Note>
+  </Step>
+</Steps>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+## Complete working example
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+Here's what your setup should look like:
 
-### Step 3: Go live
+### UserIconManager configuration
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+```
+User Icon Manager (Script)
+├─ Configuration
+│  ├─ Roles Json Url: https://example.com/roles.json
+│  ├─ Icon Prefab: RoleIconPrefab
+│  └─ Update Interval: 60
+├─ Roles
+│  ├─ Role Sprites (3)
+│  │  ├─ Element 0: AdminIconSprite
+│  │  ├─ Element 1: ModeratorIconSprite
+│  │  └─ Element 2: VipIconSprite
+│  └─ Role Names (3)
+│     ├─ Element 0: "admin"
+│     ├─ Element 1: "moderator"
+│     └─ Element 2: "vip"
+├─ Optimization
+│  ├─ Max Icon Pool: 20
+│  ├─ Use Batched Updates: ✓
+│  └─ Players Per Batch: 10
+└─ Debug
+   └─ Enable Debug Logs: □
+```
+
+### IconFollower prefab configuration
+
+```
+Icon Follower (Script)
+├─ References
+│  └─ Icon Sprite Renderer: SpriteRenderer (auto-assigned)
+├─ Configuration
+│  ├─ Max Distance: 50
+│  ├─ Icon Scale: 0.3
+│  ├─ Height Offset: 1.0
+│  └─ Lock Y Axis: ✓
+└─ Optimization
+   ├─ Distance Check Interval: 0.5
+   └─ Rotation Update Interval: 0.033
+```
+
+## Testing your setup
+
+<Steps>
+  <Step title="Test in Unity">
+    Enter Play Mode in Unity. Check the Console for log messages:
+    
+    ```
+    [UserIconManager] Loading role data from JSON...
+    [UserIconManager] Roles loaded: 3
+    [UserIconManager] Users processed: 5
+    ```
+    
+    If you see error messages, verify your JSON URL is accessible and properly formatted.
+  </Step>
+  
+  <Step title="Build and test in VRChat">
+    Build and publish your world to VRChat. Join with the username listed in your roles JSON.
+    
+    You should see your role icon floating above your head. Ask friends to join and verify their icons appear correctly.
+  </Step>
+  
+  <Step title="Verify distance culling">
+    Walk far away from another player (beyond 50 meters by default). Their icon should disappear. Walk back closer and it should reappear smoothly.
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+**Icons don't appear**: Check that role names in Inspector match JSON keys exactly (case-sensitive)
+
+**JSON fails to load**: Verify the URL is publicly accessible and returns raw JSON (not HTML)
+
+**Icons appear at wrong position**: Ensure the IconFollower component has a SpriteRenderer assigned
+
+**Performance issues**: Reduce Max Icon Pool to 15 or 10 for worlds with 60+ players
+
+**Icons flip unexpectedly**: This is intentional - icons flip horizontally for the local player to face the correct direction
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Configuration guide" icon="sliders" href="/configuration/role-setup">
+    Learn about all available configuration options and advanced settings
+  </Card>
+  <Card title="Optimization guide" icon="gauge-high" href="/concepts/optimization">
+    Tune performance settings for your specific world size and player count
+  </Card>
+  <Card title="Custom icons" icon="paintbrush" href="/guides/custom-icons">
+    Create and optimize custom role icons for your world
+  </Card>
+  <Card title="API reference" icon="code" href="/api/user-icon-manager">
+    Explore the complete API for advanced use cases
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
