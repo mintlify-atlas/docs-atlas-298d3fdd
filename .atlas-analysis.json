@@ -1,0 +1,81 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "VRChat Role Icons",
+  "projectDescription": "An optimized UdonSharp system for displaying role-based icons above players in VRChat worlds",
+  "theme": "aspen",
+  "primaryColor": "#9333EA",
+  "lightColor": "#A855F7",
+  "darkColor": "#7E22CE",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Get Started",
+        "pages": [
+          "introduction",
+          "quickstart",
+          "installation"
+        ]
+      },
+      {
+        "group": "Core Concepts",
+        "pages": [
+          "concepts/how-it-works",
+          "concepts/role-system",
+          "concepts/optimization"
+        ]
+      },
+      {
+        "group": "Configuration",
+        "pages": [
+          "configuration/icon-follower",
+          "configuration/user-icon-manager",
+          "configuration/role-setup",
+          "configuration/performance-tuning"
+        ]
+      },
+      {
+        "group": "Guides",
+        "pages": [
+          "guides/adding-roles",
+          "guides/custom-icons",
+          "guides/json-configuration",
+          "guides/scaling-for-large-worlds"
+        ]
+      },
+      {
+        "group": "API Reference",
+        "pages": [
+          "api/icon-follower",
+          "api/user-icon-manager"
+        ]
+      },
+      {
+        "group": "Advanced",
+        "pages": [
+          "advanced/object-pooling",
+          "advanced/batched-updates",
+          "advanced/troubleshooting"
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Object pooling system for efficient icon management",
+    "Distance-based icon visibility with configurable ranges",
+    "Batched player updates to distribute CPU load",
+    "Dynamic role assignment via remote JSON",
+    "Priority-based role system",
+    "Optimized for 80+ concurrent players"
+  ],
+  "publicApiSurface": [
+    "IconFollower.SetupIcon(VRCPlayerApi player, Sprite roleSprite)",
+    "IconFollower.CleanupIcon()",
+    "IconFollower.IsActive()",
+    "IconFollower.GetTargetPlayer()",
+    "IconFollower.GetCurrentDistance()",
+    "UserIconManager.LoadRolesFromJson()",
+    "UserIconManager.UpdatePlayerIcons()",
+    "UserIconManager.OnPlayerJoined(VRCPlayerApi player)",
+    "UserIconManager.OnPlayerLeft(VRCPlayerApi player)"
+  ]
+}
